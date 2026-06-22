@@ -205,7 +205,7 @@ impl<C: ImxrtConfig + BootStatePolicy> Board for Imxrt<C> {
         }
     }
 
-    fn arm_mcu_reset(&mut self) -> ! {
+    fn reboot(&mut self) -> ! {
         cortex_m::peripheral::SCB::sys_reset()
     }
 }

@@ -11,6 +11,7 @@ pub mod error;
 pub mod header;
 pub mod jump;
 pub mod lifecycle;
+pub mod lifecycle_provisioning;
 pub mod memory;
 pub mod rom_api;
 pub mod verification;
@@ -29,6 +30,7 @@ use embassy_mcxa::{peripherals, Peri};
 use embedded_storage_async::nor_flash::NorFlash;
 use flash_internal::InternalFlash;
 
+#[macro_export]
 #[cfg(any(feature = "defmt", feature = "log"))]
 macro_rules! mcxa_error {
     ($($arg:tt)*) => {
@@ -36,6 +38,7 @@ macro_rules! mcxa_error {
     };
 }
 
+#[macro_export]
 #[cfg(not(any(feature = "defmt", feature = "log")))]
 macro_rules! mcxa_error {
     ($($arg:tt)*) => {};
@@ -305,7 +308,7 @@ impl Board for McxaBoard {
         }
     }
 
-    fn arm_mcu_reset(&mut self) -> ! {
+    fn reboot(&mut self) -> ! {
         cortex_m::peripheral::SCB::sys_reset()
     }
 }

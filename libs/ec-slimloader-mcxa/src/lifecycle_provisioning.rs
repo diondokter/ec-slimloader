@@ -1,20 +1,18 @@
-use core::{convert::Infallible, mem, ptr};
-use defmt_or_log::error;
+use core::convert::Infallible;
+use core::{mem, ptr};
 
-pub use ec_slimloader_mcxa::rom_api::{
-    Bricked, CanAdvanceTo, Develop, Develop2, FailureAnalysis, InField, InFieldLocked, flash_cfg_for_rom_api, flash_driver, FlashConfig,
-    NbootLifecycleState, NbootRootKeyUsage, OemFieldReturn, FLASH_API_ERASE_KEY,
+pub use crate::error::FlashStatus;
+pub use crate::lifecycle::{
+    cmpa_header_marker_is_valid, cnsa_enforced, fast_boot_enabled, hybrid_secure_boot_enforced, is_cmpa_erased,
+    load_cfpa_header_word, load_lifecycle_from_cfpa, load_pqc_rotkh_from_cmpa, load_rotkh_from_cmpa,
+    low_power_authentication_enforced, CmpaUpdateConfigData, CnsaLevel, IFRConfigAreaBase, IFRPage, LpWakePolicy,
+    SecureBootLevel,
 };
-
-use ec_slimloader_mcxa::memory::{INTERNAL_FLASH_START, INTERNAL_FLASH_SIZE};
-
-pub use ec_slimloader_mcxa::error::FlashStatus;
-
-pub use ec_slimloader_mcxa::lifecycle::{
-    CmpaUpdateConfigData, SecureBootLevel, LpWakePolicy, CnsaLevel, IFRConfigAreaBase, IFRPage,  
-    cmpa_header_marker_is_valid, load_cfpa_header_word, load_lifecycle_from_cfpa, is_cmpa_erased, 
-    hybrid_secure_boot_enforced, low_power_authentication_enforced, cnsa_enforced, fast_boot_enabled, 
-    load_rotkh_from_cmpa, load_pqc_rotkh_from_cmpa, 
+use crate::mcxa_error;
+use crate::memory::{INTERNAL_FLASH_SIZE, INTERNAL_FLASH_START};
+pub use crate::rom_api::{
+    flash_cfg_for_rom_api, flash_driver, Bricked, CanAdvanceTo, Develop, Develop2, FailureAnalysis, FlashConfig,
+    InField, InFieldLocked, NbootLifecycleState, NbootRootKeyUsage, OemFieldReturn, FLASH_API_ERASE_KEY,
 };
 
 fn is_cfpa_erased() -> bool {
@@ -41,7 +39,10 @@ pub struct LifecycleAdvanceToken<Next> {
 
 impl<Next> LifecycleAdvanceToken<Next> {
     pub(crate) fn new(next: NbootLifecycleState) -> Self {
-        Self { next, _next: core::marker::PhantomData }
+        Self {
+            next,
+            _next: core::marker::PhantomData,
+        }
     }
 }
 
@@ -117,7 +118,7 @@ enum CfpaWriteField {
 // relative to the lifecycle header word at 0x10. Do not start counting at the header; each
 // field appears shifted down by 0x10, but the memory-mapped reads/writes in this file need
 // full page relative offsets.
-//TODO: account for all the Monotonic counter words in CFPA so that they are tracked and +1'd, otherwise ROM will silently reject the update. The page version is the only one we currently 
+//TODO: account for all the Monotonic counter words in CFPA so that they are tracked and +1'd, otherwise ROM will silently reject the update. The page version is the only one we currently
 // track since it's the only one we read-modify-write; the rest are currently unused and left at 0.
 impl CfpaWriteField {
     #[inline(always)]
@@ -159,7 +160,11 @@ fn build_cfpa_page_for_cmpa_update() -> Result<[u8; IFRPage::Cfpa.byte_len()], C
         Err(CfpaWriteError::SecurePolicyViolation) => return Err(CmpaWriteError::ConfigError),
         Err(CfpaWriteError::LifecycleRegression) => return Err(CmpaWriteError::LCStateInvalid),
         Err(CfpaWriteError::FlashError(status)) => return Err(CmpaWriteError::FlashError(status)),
-        Err(CfpaWriteError::FlashVerify { status, failed_address, failed_data }) => {
+        Err(CfpaWriteError::FlashVerify {
+            status,
+            failed_address,
+            failed_data,
+        }) => {
             return Err(CmpaWriteError::FlashVerify {
                 status,
                 failed_address,
@@ -178,7 +183,9 @@ fn build_cfpa_page_for_cmpa_update() -> Result<[u8; IFRPage::Cfpa.byte_len()], C
 
         let page_version_ptr = cfpa_page.as_mut_ptr().add(CfpaWriteField::PageVersion.byte_offset()) as *mut u32;
         let live_page_version = ptr::read_unaligned(page_version_ptr);
-        let next_page_version = live_page_version.checked_add(1).ok_or(CmpaWriteError::CounterOverflow)?;
+        let next_page_version = live_page_version
+            .checked_add(1)
+            .ok_or(CmpaWriteError::CounterOverflow)?;
         ptr::write_unaligned(page_version_ptr, next_page_version);
     }
 
@@ -328,8 +335,8 @@ pub enum TzmPreset {
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiceCsrKeyType {
-    EccP384 = 0b00, // 0b00 or 0b01: Generate DICE ECC P-384 keys
-    EccP384AndMlDsa87 = 0b11,   // 0b10 or 0b11: Generate DICE SHA-384 & ML-DSA keys
+    EccP384 = 0b00,           // 0b00 or 0b01: Generate DICE ECC P-384 keys
+    EccP384AndMlDsa87 = 0b11, // 0b10 or 0b11: Generate DICE SHA-384 & ML-DSA keys
 }
 
 #[repr(u32)]
@@ -371,7 +378,10 @@ pub enum CfpaWriteError {
 }
 
 fn read_cfpa_page_for_update() -> Result<[u8; IFRPage::Cfpa.byte_len()], CfpaWriteError> {
-    if IFRPage::Cfpa.byte_len() % IFRWriteGeometry::FlashPhraseBytes.as_usize() != 0 {
+    if !IFRPage::Cfpa
+        .byte_len()
+        .is_multiple_of(IFRWriteGeometry::FlashPhraseBytes.as_usize())
+    {
         return Err(CfpaWriteError::InvalidFlashGeometry);
     }
 
@@ -406,62 +416,82 @@ fn write_cfpa_page_to_scratch(page: &[u8; IFRPage::Cfpa.byte_len()]) -> Result<(
     let drv = flash_driver();
     let mut cfg = flash_cfg_for_rom_api();
 
-    let s = drv.flash_init(&mut cfg);
+    let s = unsafe { drv.flash_init(&mut cfg) };
     if s != FlashStatus::Success {
-        error!("cfpa: flash_init failed");
+        mcxa_error!("cfpa: flash_init failed");
         return Err(CfpaWriteError::FlashError(s));
     }
 
     // flash_erase_sector supports "flash or User IFR(IFR0)" per ROM API docs.
     // Start only needs to be phrase-aligned (16-byte); 0x11002000 qualifies.
     // 0x11002000 + 0x2000 - 1 = 0x110037FF, which is the last byte before NMPA at 0x11003800.
-    let s = drv.flash_erase_sector(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        IFRWriteGeometry::ScratchSectorBytes.as_u32(),
-        FLASH_API_ERASE_KEY,
-    );
+    let s = unsafe {
+        drv.flash_erase_sector(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32(),
+            FLASH_API_ERASE_KEY,
+        )
+    };
     if s != FlashStatus::Success {
-        error!("cfpa: flash_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, IFRWriteGeometry::ScratchSectorBytes.as_u32());
+        mcxa_error!(
+            "cfpa: flash_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32()
+        );
         return Err(CfpaWriteError::FlashError(s));
     }
-    let s = drv.ifr_verify_erase_sector(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        IFRWriteGeometry::ScratchSectorBytes.as_u32(),
-    );
+    let s = unsafe {
+        drv.ifr_verify_erase_sector(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32(),
+        )
+    };
     if s != FlashStatus::Success {
-        error!("cfpa: ifr_verify_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, IFRWriteGeometry::ScratchSectorBytes.as_u32());
+        mcxa_error!(
+            "cfpa: ifr_verify_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32()
+        );
         return Err(CfpaWriteError::FlashError(s));
     }
 
-    let s = drv.flash_program_phrase(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        page.as_ptr(),
-        page.len() as u32,
-    );
+    let s = unsafe {
+        drv.flash_program_phrase(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            page.as_ptr(),
+            page.len() as u32,
+        )
+    };
     if s != FlashStatus::Success {
-        error!("cfpa: flash_program_phrase(addr=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, page.len() as u32);
+        mcxa_error!(
+            "cfpa: flash_program_phrase(addr=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            page.len() as u32
+        );
         return Err(CfpaWriteError::FlashError(s));
     }
 
     let mut failed_address = 0u32;
     let mut failed_data = 0u32;
-    let s = drv.flash_verify_program(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        page.len() as u32,
-        page.as_ptr(),
-        &mut failed_address,
-        &mut failed_data,
-    );
+    let s = unsafe {
+        drv.flash_verify_program(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            page.len() as u32,
+            page.as_ptr(),
+            &mut failed_address,
+            &mut failed_data,
+        )
+    };
     if s != FlashStatus::Success {
-        error!("cfpa: flash_verify_program failed @ 0x{:08x} (data=0x{:08x})",
-            failed_address, failed_data);
+        mcxa_error!(
+            "cfpa: flash_verify_program failed @ 0x{:08x} (data=0x{:08x})",
+            failed_address,
+            failed_data
+        );
         return Err(CfpaWriteError::FlashVerify {
             status: s,
             failed_address,
@@ -470,18 +500,6 @@ fn write_cfpa_page_to_scratch(page: &[u8; IFRPage::Cfpa.byte_len()]) -> Result<(
     }
 
     Ok(())
-}
-
-pub fn arm_mcu_reset() -> ! {
-    // ARM Cortex-M AIRCR register for system reset
-    const AIRCR: *mut u32 = 0xE000ED0C as *mut u32;
-    const AIRCR_VECTKEY: u32 = 0x5FA << 16; // Required key for write
-    const AIRCR_SYSRESETREQ: u32 = 1 << 2; // System reset request bit
-    unsafe {
-        ptr::write_volatile(AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ);
-    }
-    // Should never reach here, but just in case reset doesn't work immediately
-    loop {}
 }
 
 #[repr(u8)]
@@ -515,7 +533,7 @@ impl RotkRevokeConfig {
         let mut next = current_word;
 
         if let Some(value) = self.rotk0 {
-            next = (next & !(0b11 << 0)) | ((value as u32) << 0);
+            next = (next & !0b11) | (value as u32);
         }
         if let Some(value) = self.rotk1 {
             next = (next & !(0b11 << 2)) | ((value as u32) << 2);
@@ -598,19 +616,18 @@ fn stage_cfpa_lifecycle_advance_to_scratch(next_lc_state: NbootLifecycleState) -
 
 pub fn cfpa_bump_auth_fail_count_and_reset() -> Result<Infallible, CfpaWriteError> {
     bump_cfpa_monotonic_ctr_in_scratch(CfpaWriteField::ErrAuthFailCount)?;
-    arm_mcu_reset()
+    cortex_m::peripheral::SCB::sys_reset()
 }
 
 pub fn cfpa_bump_firmware_version_and_reset() -> Result<Infallible, CfpaWriteError> {
     bump_cfpa_monotonic_ctr_in_scratch(CfpaWriteField::Ee0FirmwareVersion)?;
-    arm_mcu_reset()
+    cortex_m::peripheral::SCB::sys_reset()
 }
 
 pub fn update_rotk_revoke_in_scratch_and_reset(config: RotkRevokeConfig) -> Result<Infallible, CfpaWriteError> {
     update_rotk_revoke_in_scratch(config)?;
-    arm_mcu_reset()
+    cortex_m::peripheral::SCB::sys_reset()
 }
-
 
 /// Build a compile-time-checked advance token.
 ///
@@ -646,14 +663,15 @@ where
 
         let drv = flash_driver();
         let mut cfg = flash_cfg_for_rom_api();
-        let s = drv.flash_init(&mut cfg);
+        let s = unsafe { drv.flash_init(&mut cfg) };
 
         if s != FlashStatus::Success {
             return Err(CfpaWriteError::FlashError(s));
         }
 
-        let s = drv.flash_erase_sector(&mut cfg, INTERNAL_FLASH_START, INTERNAL_FLASH_SIZE, FLASH_API_ERASE_KEY);
-        
+        let s =
+            unsafe { drv.flash_erase_sector(&mut cfg, INTERNAL_FLASH_START, INTERNAL_FLASH_SIZE, FLASH_API_ERASE_KEY) };
+
         if s != FlashStatus::Success {
             return Err(CfpaWriteError::FlashError(s));
         }
@@ -664,7 +682,8 @@ where
     if is_cmpa_erased() || !cmpa_header_marker_is_valid() {
         return Err(CfpaWriteError::SecurePolicyViolation);
     }
-    if !hybrid_secure_boot_enforced() || !cnsa_enforced() || fast_boot_enabled() || !low_power_authentication_enforced() {
+    if !hybrid_secure_boot_enforced() || !cnsa_enforced() || fast_boot_enabled() || !low_power_authentication_enforced()
+    {
         return Err(CfpaWriteError::SecurePolicyViolation);
     }
     if let Some(current) = load_lifecycle_from_cfpa() {
@@ -682,7 +701,7 @@ pub fn cfpa_stage_lifecycle_advance_and_reset<Next>(
     token: LifecycleAdvanceToken<Next>,
 ) -> Result<Infallible, CfpaWriteError> {
     stage_cfpa_lifecycle_advance_to_scratch(token.next)?;
-    arm_mcu_reset()
+    cortex_m::peripheral::SCB::sys_reset()
 }
 
 /// Typed write-side representation of CMPA.RoTK_USAGE.
@@ -766,8 +785,12 @@ pub fn read_cmpa_page_for_update() -> Result<[u8; IFRPage::CmpaAll.byte_len()], 
 // Stages the provided CMPA page image into SCRATCH. Reads the current CFPA page, sets
 // UPD_TYPE to CMPA, erases scratch, programs both CFPA and CMPA scratch pages, then verifies.
 pub fn write_cmpa_page_to_scratch(cmpa_page: &[u8; IFRPage::CmpaAll.byte_len()]) -> Result<(), CmpaWriteError> {
-    if (IFRPage::Cfpa.byte_len() % IFRWriteGeometry::FlashPhraseBytes.as_usize()) != 0
-        || (IFRPage::CmpaAll.byte_len() % IFRWriteGeometry::FlashPhraseBytes.as_usize()) != 0
+    if !IFRPage::Cfpa
+        .byte_len()
+        .is_multiple_of(IFRWriteGeometry::FlashPhraseBytes.as_usize())
+        || !IFRPage::CmpaAll
+            .byte_len()
+            .is_multiple_of(IFRWriteGeometry::FlashPhraseBytes.as_usize())
     {
         return Err(CmpaWriteError::InvalidFlashGeometry);
     }
@@ -777,74 +800,99 @@ pub fn write_cmpa_page_to_scratch(cmpa_page: &[u8; IFRPage::CmpaAll.byte_len()])
     let drv = flash_driver();
     let mut cfg = flash_cfg_for_rom_api();
 
-    let status = drv.flash_init(&mut cfg);
+    let status = unsafe { drv.flash_init(&mut cfg) };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_init failed");
+        mcxa_error!("cmpa: flash_init failed");
         return Err(CmpaWriteError::FlashError(status));
     }
 
     // Erase the full 8 KB IFR scratch sector, then verify it is blank.
     // Start only needs to be phrase-aligned (16-byte); 0x11002000 qualifies.
     // 0x11002000 + 0x2000 - 1 = 0x110037FF, which is the last byte before NMPA at 0x11003800.
-    let status = drv.flash_erase_sector(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        IFRWriteGeometry::ScratchSectorBytes.as_u32(),
-        FLASH_API_ERASE_KEY,
-    );
+    let status = unsafe {
+        drv.flash_erase_sector(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32(),
+            FLASH_API_ERASE_KEY,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, IFRWriteGeometry::ScratchSectorBytes.as_u32());
+        mcxa_error!(
+            "cmpa: flash_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32()
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
-    let status = drv.ifr_verify_erase_sector(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        IFRWriteGeometry::ScratchSectorBytes.as_u32(),
-    );
+    let status = unsafe {
+        drv.ifr_verify_erase_sector(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32(),
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: ifr_verify_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, IFRWriteGeometry::ScratchSectorBytes.as_u32());
+        mcxa_error!(
+            "cmpa: ifr_verify_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32()
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
 
-    let status = drv.flash_program_phrase(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        cfpa_page.as_ptr(),
-        cfpa_page.len() as u32,
-    );
+    let status = unsafe {
+        drv.flash_program_phrase(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            cfpa_page.as_ptr(),
+            cfpa_page.len() as u32,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_program_phrase(cfpa_scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, cfpa_page.len() as u32);
+        mcxa_error!(
+            "cmpa: flash_program_phrase(cfpa_scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            cfpa_page.len() as u32
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
 
-    let status = drv.flash_program_phrase(
-        &mut cfg,
-        IFRScratchAreaBase::Cmpa as u32,
-        cmpa_page.as_ptr(),
-        cmpa_page.len() as u32,
-    );
+    let status = unsafe {
+        drv.flash_program_phrase(
+            &mut cfg,
+            IFRScratchAreaBase::Cmpa as u32,
+            cmpa_page.as_ptr(),
+            cmpa_page.len() as u32,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_program_phrase(cmpa_scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cmpa as u32, cmpa_page.len() as u32);
+        mcxa_error!(
+            "cmpa: flash_program_phrase(cmpa_scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cmpa as u32,
+            cmpa_page.len() as u32
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
 
     let mut failed_address = 0u32;
     let mut failed_data = 0u32;
-    let status = drv.flash_verify_program(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        cfpa_page.len() as u32,
-        cfpa_page.as_ptr(),
-        &mut failed_address,
-        &mut failed_data,
-    );
+    let status = unsafe {
+        drv.flash_verify_program(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            cfpa_page.len() as u32,
+            cfpa_page.as_ptr(),
+            &mut failed_address,
+            &mut failed_data,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_verify_program(cfpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
-            failed_address, failed_data);
+        mcxa_error!(
+            "cmpa: flash_verify_program(cfpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
+            failed_address,
+            failed_data
+        );
         return Err(CmpaWriteError::FlashVerify {
             status,
             failed_address,
@@ -852,17 +900,22 @@ pub fn write_cmpa_page_to_scratch(cmpa_page: &[u8; IFRPage::CmpaAll.byte_len()])
         });
     }
 
-    let status = drv.flash_verify_program(
-        &mut cfg,
-        IFRScratchAreaBase::Cmpa as u32,
-        cmpa_page.len() as u32,
-        cmpa_page.as_ptr(),
-        &mut failed_address,
-        &mut failed_data,
-    );
+    let status = unsafe {
+        drv.flash_verify_program(
+            &mut cfg,
+            IFRScratchAreaBase::Cmpa as u32,
+            cmpa_page.len() as u32,
+            cmpa_page.as_ptr(),
+            &mut failed_address,
+            &mut failed_data,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_verify_program(cmpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
-            failed_address, failed_data);
+        mcxa_error!(
+            "cmpa: flash_verify_program(cmpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
+            failed_address,
+            failed_data
+        );
         return Err(CmpaWriteError::FlashVerify {
             status,
             failed_address,
@@ -905,8 +958,12 @@ pub fn read_cmpa_core_page_for_update() -> Result<[u8; IFRPage::Cmpa.byte_len()]
 // Stages only the 512-byte core CMPA page into SCRATCH.
 // Matches read_cmpa_core_page_for_update; use when EXT_CMPA_32B_SIZE is 0.
 pub fn write_cmpa_core_page_to_scratch(cmpa_page: &[u8; IFRPage::Cmpa.byte_len()]) -> Result<(), CmpaWriteError> {
-    if (IFRPage::Cfpa.byte_len() % IFRWriteGeometry::FlashPhraseBytes.as_usize()) != 0
-        || (IFRPage::Cmpa.byte_len() % IFRWriteGeometry::FlashPhraseBytes.as_usize()) != 0
+    if !IFRPage::Cfpa
+        .byte_len()
+        .is_multiple_of(IFRWriteGeometry::FlashPhraseBytes.as_usize())
+        || !IFRPage::Cmpa
+            .byte_len()
+            .is_multiple_of(IFRWriteGeometry::FlashPhraseBytes.as_usize())
     {
         return Err(CmpaWriteError::InvalidFlashGeometry);
     }
@@ -916,86 +973,124 @@ pub fn write_cmpa_core_page_to_scratch(cmpa_page: &[u8; IFRPage::Cmpa.byte_len()
     let drv = flash_driver();
     let mut cfg = flash_cfg_for_rom_api();
 
-    let status = drv.flash_init(&mut cfg);
+    let status = unsafe { drv.flash_init(&mut cfg) };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_init failed");
+        mcxa_error!("cmpa: flash_init failed");
         return Err(CmpaWriteError::FlashError(status));
     }
 
-    let status = drv.flash_erase_sector(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        IFRWriteGeometry::ScratchSectorBytes.as_u32(),
-        FLASH_API_ERASE_KEY,
-    );
+    let status = unsafe {
+        drv.flash_erase_sector(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32(),
+            FLASH_API_ERASE_KEY,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, IFRWriteGeometry::ScratchSectorBytes.as_u32());
+        mcxa_error!(
+            "cmpa: flash_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32()
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
-    let status = drv.ifr_verify_erase_sector(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        IFRWriteGeometry::ScratchSectorBytes.as_u32(),
-    );
+    let status = unsafe {
+        drv.ifr_verify_erase_sector(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32(),
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: ifr_verify_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, IFRWriteGeometry::ScratchSectorBytes.as_u32());
+        mcxa_error!(
+            "cmpa: ifr_verify_erase_sector(scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            IFRWriteGeometry::ScratchSectorBytes.as_u32()
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
 
-    let status = drv.flash_program_phrase(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        cfpa_page.as_ptr(),
-        cfpa_page.len() as u32,
-    );
+    let status = unsafe {
+        drv.flash_program_phrase(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            cfpa_page.as_ptr(),
+            cfpa_page.len() as u32,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_program_phrase(cfpa_scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cfpa as u32, cfpa_page.len() as u32);
+        mcxa_error!(
+            "cmpa: flash_program_phrase(cfpa_scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cfpa as u32,
+            cfpa_page.len() as u32
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
 
-    let status = drv.flash_program_phrase(
-        &mut cfg,
-        IFRScratchAreaBase::Cmpa as u32,
-        cmpa_page.as_ptr(),
-        cmpa_page.len() as u32,
-    );
+    let status = unsafe {
+        drv.flash_program_phrase(
+            &mut cfg,
+            IFRScratchAreaBase::Cmpa as u32,
+            cmpa_page.as_ptr(),
+            cmpa_page.len() as u32,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_program_phrase(cmpa_scratch=0x{:08x}, len=0x{:x}) failed",
-            IFRScratchAreaBase::Cmpa as u32, cmpa_page.len() as u32);
+        mcxa_error!(
+            "cmpa: flash_program_phrase(cmpa_scratch=0x{:08x}, len=0x{:x}) failed",
+            IFRScratchAreaBase::Cmpa as u32,
+            cmpa_page.len() as u32
+        );
         return Err(CmpaWriteError::FlashError(status));
     }
 
     let mut failed_address = 0u32;
     let mut failed_data = 0u32;
-    let status = drv.flash_verify_program(
-        &mut cfg,
-        IFRScratchAreaBase::Cfpa as u32,
-        cfpa_page.len() as u32,
-        cfpa_page.as_ptr(),
-        &mut failed_address,
-        &mut failed_data,
-    );
+    let status = unsafe {
+        drv.flash_verify_program(
+            &mut cfg,
+            IFRScratchAreaBase::Cfpa as u32,
+            cfpa_page.len() as u32,
+            cfpa_page.as_ptr(),
+            &mut failed_address,
+            &mut failed_data,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_verify_program(cfpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
-            failed_address, failed_data);
-        return Err(CmpaWriteError::FlashVerify { status, failed_address, failed_data });
+        mcxa_error!(
+            "cmpa: flash_verify_program(cfpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
+            failed_address,
+            failed_data
+        );
+        return Err(CmpaWriteError::FlashVerify {
+            status,
+            failed_address,
+            failed_data,
+        });
     }
 
-    let status = drv.flash_verify_program(
-        &mut cfg,
-        IFRScratchAreaBase::Cmpa as u32,
-        cmpa_page.len() as u32,
-        cmpa_page.as_ptr(),
-        &mut failed_address,
-        &mut failed_data,
-    );
+    let status = unsafe {
+        drv.flash_verify_program(
+            &mut cfg,
+            IFRScratchAreaBase::Cmpa as u32,
+            cmpa_page.len() as u32,
+            cmpa_page.as_ptr(),
+            &mut failed_address,
+            &mut failed_data,
+        )
+    };
     if status != FlashStatus::Success {
-        error!("cmpa: flash_verify_program(cmpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
-            failed_address, failed_data);
-        return Err(CmpaWriteError::FlashVerify { status, failed_address, failed_data });
+        mcxa_error!(
+            "cmpa: flash_verify_program(cmpa_scratch) failed @ 0x{:08x} (data=0x{:08x})",
+            failed_address,
+            failed_data
+        );
+        return Err(CmpaWriteError::FlashVerify {
+            status,
+            failed_address,
+            failed_data,
+        });
     }
 
     Ok(())
@@ -1035,7 +1130,7 @@ pub fn write_cmpa_default_config_to_scratch_and_reset(config: CmpaDefaultConfig)
     cmpa_page[CmpaUpdateConfigData::PqcRotkh.byte_range()].copy_from_slice(&config.pqc_rotkh);
 
     write_cmpa_page_to_scratch(&cmpa_page)?;
-    arm_mcu_reset()
+    cortex_m::peripheral::SCB::sys_reset()
 }
 
 /// Individually addressable CMPA word-fields for generic patching.
@@ -1043,110 +1138,110 @@ pub fn write_cmpa_default_config_to_scratch_and_reset(config: CmpaDefaultConfig)
 /// Offsets are relative to IFRConfigAreaBase::Cmpa (0x0100_0200).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CmpaField {
-    BootTimers,             // 0x0C  → 0x0100_020C
-    LspiQflashCfg0,         // 0x10  → 0x0100_0210
-    LspiQflashCfg1,         // 0x14  → 0x0100_0214
-    LspiFlashCfg0,          // 0x18  → 0x0100_0218
-    LspiFlashCfg1,          // 0x1C  → 0x0100_021C
-    IspUartCfg,             // 0x20  → 0x0100_0220
-    IspI2cCfg,              // 0x24  → 0x0100_0224
-    IspCanCfg,              // 0x28  → 0x0100_0228
-    IspSpiCfg0,             // 0x2C  → 0x0100_022C
-    IspSpiCfg1,             // 0x30  → 0x0100_0230
-    IspUsbId,               // 0x34  → 0x0100_0234
-    IspUsbCfg,              // 0x38  → 0x0100_0238
-    IspMiscCfg,             // 0x3C  → 0x0100_023C
-    CcSocuPin,              // 0x40  → 0x0100_0240
-    CcSocuDflt,             // 0x44  → 0x0100_0244
-    VendorUsage,            // 0x48  → 0x0100_0248
-    Iped0Start,             // 0x130 → 0x0100_0330
-    Iped0End,               // 0x134 → 0x0100_0334
-    Iped1Start,             // 0x138 → 0x0100_0338
-    Iped1End,               // 0x13C → 0x0100_033C
-    Iped2Start,             // 0x140 → 0x0100_0340
-    Iped2End,               // 0x144 → 0x0100_0344
-    Iped3Start,             // 0x148 → 0x0100_0348
-    Iped3End,               // 0x14C → 0x0100_034C
-    Iped4Start,             // 0x150 → 0x0100_0350
-    Iped4End,               // 0x154 → 0x0100_0354
-    Iped5Start,             // 0x158 → 0x0100_0358
-    Iped5End,               // 0x15C → 0x0100_035C
-    Iped6Start,             // 0x160 → 0x0100_0360
-    Iped6End,               // 0x164 → 0x0100_0364
-    Iped7Start,             // 0x168 → 0x0100_0368
-    Iped7End,               // 0x16C → 0x0100_036C
-    DiceX509SramBufLen,     // 0x1BC → 0x0100_03BC
-    DiceX509EcdsaSramAddr,  // 0x1C0 → 0x0100_03C0
-    DiceX509MldsaSramAddr,  // 0x1C4 → 0x0100_03C4
-    DiceAliasKeySramAddr,   // 0x1C8 → 0x0100_03C8
-    MldsaCertTempAddr,      // 0x1CC → 0x0100_03CC
-    MldsaCertTempHash0,     // 0x1D0 → 0x0100_03D0
-    MldsaCertTempHash1,     // 0x1D4 → 0x0100_03D4
-    MldsaCertTempHash2,     // 0x1D8 → 0x0100_03D8
-    MldsaCertTempHash3,     // 0x1DC → 0x0100_03DC
-    MldsaCertTempHash4,     // 0x1E0 → 0x0100_03E0
-    MldsaCertTempHash5,     // 0x1E4 → 0x0100_03E4
-    MldsaCertTempHash6,     // 0x1E8 → 0x0100_03E8
-    MldsaCertTempHash7,     // 0x1EC → 0x0100_03EC
-    MldsaCertTempHash8,     // 0x1F0 → 0x0100_03F0
-    MldsaCertTempHash9,     // 0x1F4 → 0x0100_03F4
-    MldsaCertTempHash10,    // 0x1F8 → 0x0100_03F8
-    MldsaCertTempHash11,    // 0x1FC → 0x0100_03FC
+    BootTimers,            // 0x0C  → 0x0100_020C
+    LspiQflashCfg0,        // 0x10  → 0x0100_0210
+    LspiQflashCfg1,        // 0x14  → 0x0100_0214
+    LspiFlashCfg0,         // 0x18  → 0x0100_0218
+    LspiFlashCfg1,         // 0x1C  → 0x0100_021C
+    IspUartCfg,            // 0x20  → 0x0100_0220
+    IspI2cCfg,             // 0x24  → 0x0100_0224
+    IspCanCfg,             // 0x28  → 0x0100_0228
+    IspSpiCfg0,            // 0x2C  → 0x0100_022C
+    IspSpiCfg1,            // 0x30  → 0x0100_0230
+    IspUsbId,              // 0x34  → 0x0100_0234
+    IspUsbCfg,             // 0x38  → 0x0100_0238
+    IspMiscCfg,            // 0x3C  → 0x0100_023C
+    CcSocuPin,             // 0x40  → 0x0100_0240
+    CcSocuDflt,            // 0x44  → 0x0100_0244
+    VendorUsage,           // 0x48  → 0x0100_0248
+    Iped0Start,            // 0x130 → 0x0100_0330
+    Iped0End,              // 0x134 → 0x0100_0334
+    Iped1Start,            // 0x138 → 0x0100_0338
+    Iped1End,              // 0x13C → 0x0100_033C
+    Iped2Start,            // 0x140 → 0x0100_0340
+    Iped2End,              // 0x144 → 0x0100_0344
+    Iped3Start,            // 0x148 → 0x0100_0348
+    Iped3End,              // 0x14C → 0x0100_034C
+    Iped4Start,            // 0x150 → 0x0100_0350
+    Iped4End,              // 0x154 → 0x0100_0354
+    Iped5Start,            // 0x158 → 0x0100_0358
+    Iped5End,              // 0x15C → 0x0100_035C
+    Iped6Start,            // 0x160 → 0x0100_0360
+    Iped6End,              // 0x164 → 0x0100_0364
+    Iped7Start,            // 0x168 → 0x0100_0368
+    Iped7End,              // 0x16C → 0x0100_036C
+    DiceX509SramBufLen,    // 0x1BC → 0x0100_03BC
+    DiceX509EcdsaSramAddr, // 0x1C0 → 0x0100_03C0
+    DiceX509MldsaSramAddr, // 0x1C4 → 0x0100_03C4
+    DiceAliasKeySramAddr,  // 0x1C8 → 0x0100_03C8
+    MldsaCertTempAddr,     // 0x1CC → 0x0100_03CC
+    MldsaCertTempHash0,    // 0x1D0 → 0x0100_03D0
+    MldsaCertTempHash1,    // 0x1D4 → 0x0100_03D4
+    MldsaCertTempHash2,    // 0x1D8 → 0x0100_03D8
+    MldsaCertTempHash3,    // 0x1DC → 0x0100_03DC
+    MldsaCertTempHash4,    // 0x1E0 → 0x0100_03E0
+    MldsaCertTempHash5,    // 0x1E4 → 0x0100_03E4
+    MldsaCertTempHash6,    // 0x1E8 → 0x0100_03E8
+    MldsaCertTempHash7,    // 0x1EC → 0x0100_03EC
+    MldsaCertTempHash8,    // 0x1F0 → 0x0100_03F0
+    MldsaCertTempHash9,    // 0x1F4 → 0x0100_03F4
+    MldsaCertTempHash10,   // 0x1F8 → 0x0100_03F8
+    MldsaCertTempHash11,   // 0x1FC → 0x0100_03FC
 }
 
 impl CmpaField {
     #[inline(always)]
     pub const fn byte_offset(self) -> usize {
         match self {
-            Self::BootTimers            => 0x0C,
-            Self::LspiQflashCfg0        => 0x10,
-            Self::LspiQflashCfg1        => 0x14,
-            Self::LspiFlashCfg0         => 0x18,
-            Self::LspiFlashCfg1         => 0x1C,
-            Self::IspUartCfg            => 0x20,
-            Self::IspI2cCfg             => 0x24,
-            Self::IspCanCfg             => 0x28,
-            Self::IspSpiCfg0            => 0x2C,
-            Self::IspSpiCfg1            => 0x30,
-            Self::IspUsbId              => 0x34,
-            Self::IspUsbCfg             => 0x38,
-            Self::IspMiscCfg            => 0x3C,
-            Self::CcSocuPin             => 0x40,
-            Self::CcSocuDflt            => 0x44,
-            Self::VendorUsage           => 0x48,
-            Self::Iped0Start            => 0x130,
-            Self::Iped0End              => 0x134,
-            Self::Iped1Start            => 0x138,
-            Self::Iped1End              => 0x13C,
-            Self::Iped2Start            => 0x140,
-            Self::Iped2End              => 0x144,
-            Self::Iped3Start            => 0x148,
-            Self::Iped3End              => 0x14C,
-            Self::Iped4Start            => 0x150,
-            Self::Iped4End              => 0x154,
-            Self::Iped5Start            => 0x158,
-            Self::Iped5End              => 0x15C,
-            Self::Iped6Start            => 0x160,
-            Self::Iped6End              => 0x164,
-            Self::Iped7Start            => 0x168,
-            Self::Iped7End              => 0x16C,
-            Self::DiceX509SramBufLen    => 0x1BC,
+            Self::BootTimers => 0x0C,
+            Self::LspiQflashCfg0 => 0x10,
+            Self::LspiQflashCfg1 => 0x14,
+            Self::LspiFlashCfg0 => 0x18,
+            Self::LspiFlashCfg1 => 0x1C,
+            Self::IspUartCfg => 0x20,
+            Self::IspI2cCfg => 0x24,
+            Self::IspCanCfg => 0x28,
+            Self::IspSpiCfg0 => 0x2C,
+            Self::IspSpiCfg1 => 0x30,
+            Self::IspUsbId => 0x34,
+            Self::IspUsbCfg => 0x38,
+            Self::IspMiscCfg => 0x3C,
+            Self::CcSocuPin => 0x40,
+            Self::CcSocuDflt => 0x44,
+            Self::VendorUsage => 0x48,
+            Self::Iped0Start => 0x130,
+            Self::Iped0End => 0x134,
+            Self::Iped1Start => 0x138,
+            Self::Iped1End => 0x13C,
+            Self::Iped2Start => 0x140,
+            Self::Iped2End => 0x144,
+            Self::Iped3Start => 0x148,
+            Self::Iped3End => 0x14C,
+            Self::Iped4Start => 0x150,
+            Self::Iped4End => 0x154,
+            Self::Iped5Start => 0x158,
+            Self::Iped5End => 0x15C,
+            Self::Iped6Start => 0x160,
+            Self::Iped6End => 0x164,
+            Self::Iped7Start => 0x168,
+            Self::Iped7End => 0x16C,
+            Self::DiceX509SramBufLen => 0x1BC,
             Self::DiceX509EcdsaSramAddr => 0x1C0,
             Self::DiceX509MldsaSramAddr => 0x1C4,
-            Self::DiceAliasKeySramAddr  => 0x1C8,
-            Self::MldsaCertTempAddr     => 0x1CC,
-            Self::MldsaCertTempHash0    => 0x1D0,
-            Self::MldsaCertTempHash1    => 0x1D4,
-            Self::MldsaCertTempHash2    => 0x1D8,
-            Self::MldsaCertTempHash3    => 0x1DC,
-            Self::MldsaCertTempHash4    => 0x1E0,
-            Self::MldsaCertTempHash5    => 0x1E4,
-            Self::MldsaCertTempHash6    => 0x1E8,
-            Self::MldsaCertTempHash7    => 0x1EC,
-            Self::MldsaCertTempHash8    => 0x1F0,
-            Self::MldsaCertTempHash9    => 0x1F4,
-            Self::MldsaCertTempHash10   => 0x1F8,
-            Self::MldsaCertTempHash11   => 0x1FC,
+            Self::DiceAliasKeySramAddr => 0x1C8,
+            Self::MldsaCertTempAddr => 0x1CC,
+            Self::MldsaCertTempHash0 => 0x1D0,
+            Self::MldsaCertTempHash1 => 0x1D4,
+            Self::MldsaCertTempHash2 => 0x1D8,
+            Self::MldsaCertTempHash3 => 0x1DC,
+            Self::MldsaCertTempHash4 => 0x1E0,
+            Self::MldsaCertTempHash5 => 0x1E4,
+            Self::MldsaCertTempHash6 => 0x1E8,
+            Self::MldsaCertTempHash7 => 0x1EC,
+            Self::MldsaCertTempHash8 => 0x1F0,
+            Self::MldsaCertTempHash9 => 0x1F4,
+            Self::MldsaCertTempHash10 => 0x1F8,
+            Self::MldsaCertTempHash11 => 0x1FC,
         }
     }
 
@@ -1159,13 +1254,11 @@ impl CmpaField {
 /// Write arbitrary CMPA word-fields to scratch and reset.
 /// `fields` is a slice of (field, value) pairs; each field is written as a little-endian u32.
 /// Fields not listed are preserved from the existing CMPA page (or zeroed on first write).
-pub fn write_cmpa_fields_to_scratch_and_reset(
-    fields: &[(CmpaField, u32)],
-) -> Result<Infallible, CmpaWriteError> {
+pub fn write_cmpa_fields_to_scratch_and_reset(fields: &[(CmpaField, u32)]) -> Result<Infallible, CmpaWriteError> {
     let mut cmpa_page = read_cmpa_page_for_update()?;
     for (field, value) in fields {
         cmpa_page[field.byte_range()].copy_from_slice(&value.to_le_bytes());
     }
     write_cmpa_page_to_scratch(&cmpa_page)?;
-    arm_mcu_reset()
+    cortex_m::peripheral::SCB::sys_reset()
 }
