@@ -14,7 +14,6 @@ ec-slimloader = { path = "../ec-slimloader", default-features = false }
 ec-slimloader-state = { path = "../ec-slimloader-state", default-features = false }
 cortex-m = "0.7"
 embassy-sync = { workspace = true }
-embassy-time = { workspace = true }
 embassy-mcxa = { workspace = true, features = ["rt"] }
 embedded-storage-async = { workspace = true }
 

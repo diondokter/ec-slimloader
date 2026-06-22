@@ -206,14 +206,6 @@ impl<C: ImxrtConfig + BootStatePolicy> Board for Imxrt<C> {
     }
 
     fn arm_mcu_reset(&mut self) -> ! {
-        const AIRCR: *mut u32 = 0xE000ED0C as *mut u32;
-        const AIRCR_VECTKEY: u32 = 0x5FA << 16;
-        const AIRCR_SYSRESETREQ: u32 = 1 << 2;
-        unsafe {
-            core::ptr::write_volatile(AIRCR, AIRCR_VECTKEY | AIRCR_SYSRESETREQ);
-        }
-        loop {
-            cortex_m::asm::wfi();
-        }
+        cortex_m::peripheral::SCB::sys_reset()
     }
 }

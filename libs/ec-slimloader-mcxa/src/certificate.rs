@@ -107,7 +107,7 @@ pub struct ParsedSignatures<'a> {
 
 fn sha512_rkth_48(peri: Peri<'_, peripherals::SGI0>, input: &[u8]) -> Option<[u8; 48]> {
     let sgi = embassy_mcxa::sgi::Sgi::new_blocking(peri).ok()?;
-    let mut blocking_hasher = crate::BlockingHasher::new(sgi);
+    let mut blocking_hasher = sgi.hasher();
 
     blocking_hasher.hsm_sha512_rkth(input)
 }
@@ -737,7 +737,7 @@ pub unsafe fn parse_ahab_container(
     }
     let images_len = (*ch).image_count() as usize;
     if images_len == 0 || images_len > 3 {
-        return Err(CertError::Bounds); // We want at least one executbale image, AHAB supports up to 3 images. 
+        return Err(CertError::Bounds); // We want at least one executbale image, AHAB supports up to 3 images.
     }
     let image_array_end = checked_end(
         size_of::<AhabContainerHeaderRaw>(),

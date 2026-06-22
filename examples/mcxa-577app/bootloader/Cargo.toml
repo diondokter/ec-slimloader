@@ -25,13 +25,6 @@ ec-slimloader = { path = "../../../libs/ec-slimloader", default-features = false
 
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", default-features = false, features = ["platform-cortex-m", "executor-thread"] }
 
-[patch.crates-io]
-embassy-time = { git = "https://github.com/embassy-rs/embassy" }
-embassy-time-driver = { git = "https://github.com/embassy-rs/embassy" }
-embassy-time-queue-utils = { git = "https://github.com/embassy-rs/embassy" }
-
 [profile.release]
-debug = 2            # Full DWARF info for defmt/probe-rs decoding
-lto = false          # Disable LTO to prevent stripping debug patterns
-opt-level = 2        # Standard optimization
+debug = true            # Full DWARF info for defmt/probe-rs decoding
 panic = "abort"      # Smaller binaries
