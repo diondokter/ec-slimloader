@@ -1,6 +1,7 @@
+use core::ffi::c_void;
+
 use super::Status;
 use crate::error::SpiFlashStatus;
-use core::ffi::c_void;
 
 // LPSPI external flash (SPI NOR/EEPROM) ROM API
 
@@ -37,11 +38,11 @@ impl SpiFlashDriver {
         unsafe { SpiFlashStatus::from_raw((self.raw.spi_eeprom_init)()) }
     }
 
-    pub fn spi_eeprom_read(&self, address: u32, no_of_bytes: u32, buffer: *mut u8) -> SpiFlashStatus {
+    pub unsafe fn spi_eeprom_read(&self, address: u32, no_of_bytes: u32, buffer: *mut u8) -> SpiFlashStatus {
         unsafe { SpiFlashStatus::from_raw((self.raw.spi_eeprom_read)(address, no_of_bytes, buffer)) }
     }
 
-    pub fn spi_eeprom_write(&self, address: u32, no_of_bytes: u32, buffer: *const u8) -> SpiFlashStatus {
+    pub unsafe fn spi_eeprom_write(&self, address: u32, no_of_bytes: u32, buffer: *const u8) -> SpiFlashStatus {
         unsafe { SpiFlashStatus::from_raw((self.raw.spi_eeprom_write)(address, no_of_bytes, buffer)) }
     }
 
@@ -49,7 +50,7 @@ impl SpiFlashDriver {
         unsafe { SpiFlashStatus::from_raw((self.raw.spi_eeprom_erase)(address, length)) }
     }
 
-    pub fn spi_eeprom_config(&self, config: *mut u32) -> SpiFlashStatus {
+    pub unsafe fn spi_eeprom_config(&self, config: *mut u32) -> SpiFlashStatus {
         unsafe { SpiFlashStatus::from_raw((self.raw.spi_eeprom_config)(config)) }
     }
 

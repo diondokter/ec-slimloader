@@ -1,6 +1,6 @@
-use crate::certificate::derive_image_rkth_pair;
 use embassy_mcxa::{peripherals, Peri};
 
+use crate::certificate::derive_image_rkth_pair;
 use crate::lifecycle::{
     cnsa_enforced, fast_boot_enabled, load_firmware_version_from_cfpa, load_image_key_revocation_from_cfpa,
     load_lifecycle_from_cfpa, load_pqc_rotkh_from_cmpa, load_root_key_revocation_from_cfpa, load_rotk_usage_from_cmpa,
@@ -57,7 +57,7 @@ fn is_dev_mode(secure_boot_state: SecureBootState) -> bool {
 /// Will ONLY authenticate if CMPA secure boot settings is configured correctly, correct key set (as established by the ROTKH values) is used for signing, and the image is properly signed as an HYBRID (ECDSA + ML-DSA) image.
 /// In dev mode, if the RKTH derived from the image does not match the ROTKH in CMPA, it will be copied to the ROTKH to allow authentication to proceed (this allows flexibility in dev mode since keys may not be provisioned yet),
 /// but in production mode, a mismatch will cause authentication to fail (to prevent unauthorized images from being authenticated).
-pub fn verify_authenticity<'d>(
+pub unsafe fn verify_authenticity<'d>(
     mut peri: Peri<'d, peripherals::SGI0>,
     image_base: *const u8,
 ) -> Result<(), ec_slimloader::BootError> {
@@ -66,7 +66,7 @@ pub fn verify_authenticity<'d>(
     let mut sig_ok: NbootBool = NbootBoolValue::False as u32;
 
     verify_trace!("Initializing NBOOT context");
-    let context_init_status = n_boot_api.nboot_context_init(&mut ctx);
+    let context_init_status = unsafe { n_boot_api.nboot_context_init(&mut ctx) };
     if context_init_status != crate::error::NbootStatus::Success {
         return Err(ec_slimloader::BootError::Authenticate);
     }
@@ -78,7 +78,7 @@ pub fn verify_authenticity<'d>(
                 NbootRootKeyRevocation::Revoked as u32,
                 NbootRootKeyRevocation::Revoked as u32,
                 NbootRootKeyRevocation::Revoked as u32,
-                //Start as revoked by default for safety; will be updated with real values from CFPA if read is successful. 
+                //Start as revoked by default for safety; will be updated with real values from CFPA if read is successful.
                 // This way if CFPA read fails for some reason, we won't accidentally treat revoked keys as valid.
             ],
             soc_imageKeyRevocation: 0, //Image key revoocation use case: None?
@@ -139,28 +139,27 @@ pub fn verify_authenticity<'d>(
     let secure_boot_state = secure_boot_state();
     if matches!(secure_boot_state, SecureBootState::Unknown) {
         verify_error!("Secure boot state could not be validated");
-        n_boot_api.nboot_context_deinit(&mut ctx);
+        unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
         return Err(ec_slimloader::BootError::Integrity);
     }
 
     let dev_mode = is_dev_mode(secure_boot_state);
 
-    if !dev_mode {
-        if !matches!(secure_boot_state, SecureBootState::HybridEnforced)
+    if !dev_mode
+        && (!matches!(secure_boot_state, SecureBootState::HybridEnforced)
             || !cnsa_enforced()
             || fast_boot_enabled()
-            || !low_power_authentication_enforced()
-        {
-            verify_error!(
+            || !low_power_authentication_enforced())
+    {
+        verify_error!(
                 "Secure Boot policy violation: secure boot state={:?}, CNSA enforced={}, fast boot enabled={}, low power auth enforced={}",
                 secure_boot_state,
                 cnsa_enforced(),
                 fast_boot_enabled(),
                 low_power_authentication_enforced()
             );
-            n_boot_api.nboot_context_deinit(&mut ctx);
-            return Err(ec_slimloader::BootError::Integrity);
-        }
+        unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
+        return Err(ec_slimloader::BootError::Integrity);
     }
 
     let image_header = unsafe { &*(image_base as *const crate::header::VectorAndHeaderRaw) };
@@ -177,14 +176,15 @@ pub fn verify_authenticity<'d>(
         let image_rkth_words = image_rkth.as_le_words();
 
         verify_info!("Derived image RKTH: {:x}", image_rkth_words);
-        if image_rkth_words != parms.soc_RoTNVM.soc_rkh { // non-const time is okay, these are public key hashes.
+        if image_rkth_words != parms.soc_RoTNVM.soc_rkh {
+            // non-const time is okay, these are public key hashes.
             if dev_mode {
                 verify_warn!("Dev mode: copying from image RKTH");
                 parms.soc_RoTNVM.soc_rkh.copy_from_slice(&image_rkth_words);
             } else {
                 verify_warn!("Production: image RKTH differs; not copying, will call ecdsa_verify anyway");
                 //TODO: just return Err() here?
-                n_boot_api.nboot_context_deinit(&mut ctx);
+                unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
                 return Err(ec_slimloader::BootError::RootOfTrust);
             }
         } else {
@@ -192,7 +192,7 @@ pub fn verify_authenticity<'d>(
         }
     } else {
         verify_warn!("Failed to derive image RKTH");
-        n_boot_api.nboot_context_deinit(&mut ctx);
+        unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
         return Err(ec_slimloader::BootError::RootOfTrust);
     }
 
@@ -201,14 +201,15 @@ pub fn verify_authenticity<'d>(
         let pqc_rkth_words = pqc_rkth.as_le_words();
 
         verify_info!("Derived image PQC RKTH: {:x}", pqc_rkth_words);
-        if pqc_rkth_words != parms.soc_RoTNVM.soc_rkh_1 { //non-const time comparison is okay, these are public key hashes
+        if pqc_rkth_words != parms.soc_RoTNVM.soc_rkh_1 {
+            //non-const time comparison is okay, these are public key hashes
             if dev_mode {
                 verify_warn!("Dev mode: copying from image PQC RKTH");
                 parms.soc_RoTNVM.soc_rkh_1.copy_from_slice(&pqc_rkth_words);
             } else {
                 verify_warn!("Production: image PQC RKTH differs; not copying");
                 //TODO: just return Err() here?
-                n_boot_api.nboot_context_deinit(&mut ctx);
+                unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
                 return Err(ec_slimloader::BootError::RootOfTrust);
             }
         } else {
@@ -216,11 +217,11 @@ pub fn verify_authenticity<'d>(
         }
     } else {
         verify_warn!("Failed to derive image PQC RKTH (ML-DSA not found or error)");
-        n_boot_api.nboot_context_deinit(&mut ctx);
+        unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
         return Err(ec_slimloader::BootError::RootOfTrust);
     }
     verify_trace!("begin auth");
-    let status = n_boot_api.nboot_img_authenticate_romapi(&mut ctx, image_base, &mut sig_ok, &mut parms);
+    let status = unsafe { n_boot_api.nboot_img_authenticate_romapi(&mut ctx, image_base, &mut sig_ok, &mut parms) };
 
     for w in parms.soc_RoTNVM.soc_rkh.iter_mut() {
         *w = 0;
@@ -232,7 +233,7 @@ pub fn verify_authenticity<'d>(
         *w = 0;
     }
 
-    n_boot_api.nboot_context_deinit(&mut ctx);
+    unsafe { n_boot_api.nboot_context_deinit(&mut ctx) };
     //TODO: does de-init zeroize the context or do we need to do that manually for security?
 
     match (status, sig_ok) {

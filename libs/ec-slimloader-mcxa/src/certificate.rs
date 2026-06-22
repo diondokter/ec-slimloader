@@ -1,6 +1,7 @@
 // AHAB container + certificate parsing for MCXA family with PQC support.
 // Supports hybrid keys: ECDSA P-384 and ML-DSA-87.
 use core::mem::size_of;
+
 use embassy_mcxa::{peripherals, Peri};
 
 macro_rules! cert_trace {
@@ -162,7 +163,7 @@ impl AhabContainerHeaderRaw {
 
     /// Get the signature block offset from word3 (bits 15-0)
     pub fn signature_block_offset(&self) -> u32 {
-        (self.word3 & 0xFFFF) as u32
+        self.word3 & 0xFFFF
     }
 
     /// Get SRK set from flags (bits 3-0)
@@ -613,7 +614,7 @@ impl AhabSignatureHeaderRaw {
     pub fn is_mldsa_size(&self) -> bool {
         // ML-DSA-87 signatures are variable length but typically around 4627 bytes
         let size = self.signature_data_size();
-        size >= 4000 && size <= 5000 // Reasonable range for ML-DSA-87, search says ~4564 bytes.
+        (4000..=5000).contains(&size) // Reasonable range for ML-DSA-87, search says ~4564 bytes.
     }
 }
 
@@ -655,7 +656,7 @@ impl AhabCertificateHeaderRaw {
 
     /// Get signature offset from word1 (bits 15-0)
     pub fn signature_offset(&self) -> u32 {
-        (self.word1 & 0xFFFF) as u32
+        self.word1 & 0xFFFF
     }
 
     /// Check if this is a valid certificate (tag 0xAF, version 0x02)
@@ -680,7 +681,7 @@ impl AhabCertificateHeaderRaw {
 }
 
 fn is_aligned_4(ptr: *const u8) -> bool {
-    (ptr as usize) % 4 == 0
+    (ptr as usize).is_multiple_of(4)
 }
 
 #[inline(always)]
@@ -996,7 +997,7 @@ pub unsafe fn parse_srk_array<'a>(
 
 /// Derive RKTH values for both ECDSA and ML-DSA from the AHAB container's SRK array. Returns the leftmost 48 bytes of the SHA-512 digest of the complete SRK table (header + records) for each algorithm.
 /// If any step fails, returns None for that RKTH.
-pub fn derive_image_rkth_pair<'d>(
+pub unsafe fn derive_image_rkth_pair<'d>(
     mut peri: Peri<'d, peripherals::SGI0>,
     image_base: *const u8,
     container_offset: u32,
@@ -1012,14 +1013,7 @@ pub fn derive_image_rkth_pair<'d>(
 
                     // Use the complete SRK table for RKTH calculation
                     let table_bytes = table.raw_table_bytes;
-                    match sha512_rkth_48(peri.reborrow(), table_bytes) {
-                        //TODO: Verify if SHA-384 is correct here, SRM vs. SPSDK mismatch
-                        Some(digest) => Some(Rkth(digest)),
-                        None => {
-                            cert_error!("SHA-512 unavailable for ECDSA RKTH");
-                            None
-                        }
-                    }
+                    sha512_rkth_48(peri.reborrow(), table_bytes).map(Rkth)
                 };
 
                 // Derive ML-DSA RKTH from complete ML-DSA table (header + records)
@@ -1029,13 +1023,7 @@ pub fn derive_image_rkth_pair<'d>(
                     // Use the complete SRK table for RKTH calculation
                     let table_bytes = table.raw_table_bytes;
 
-                    match sha512_rkth_48(peri.reborrow(), table_bytes) {
-                        Some(digest) => Some(Rkth(digest)),
-                        None => {
-                            cert_error!("SHA-512 unavailable for PQC RKTH");
-                            None
-                        }
-                    }
+                    sha512_rkth_48(peri.reborrow(), table_bytes).map(Rkth)
                 };
                 cert_trace!("Derived both ECDSA and ML-DSA RKTH values");
                 return (ecdsa_rkth, mldsa_rkth);

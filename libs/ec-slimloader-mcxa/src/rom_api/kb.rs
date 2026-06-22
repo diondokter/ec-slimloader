@@ -1,6 +1,7 @@
+use core::ffi::c_void;
+
 use super::Status;
 use crate::error::KbStatus;
-use core::ffi::c_void;
 
 // KBoot (KB) ROM API
 
@@ -113,15 +114,15 @@ impl KBApiDriver {
         Self { raw }
     }
 
-    pub fn kb_init(&self, session: *mut *mut KbSessionRef, options: *const KbOptions) -> KbStatus {
+    pub unsafe fn kb_init(&self, session: *mut *mut KbSessionRef, options: *const KbOptions) -> KbStatus {
         unsafe { KbStatus::from_raw((self.raw.kb_init)(session, options)) }
     }
 
-    pub fn kb_deinit(&self, session: *mut KbSessionRef) -> KbStatus {
+    pub unsafe fn kb_deinit(&self, session: *mut KbSessionRef) -> KbStatus {
         unsafe { KbStatus::from_raw((self.raw.kb_deinit)(session)) }
     }
 
-    pub fn kb_execute(&self, session: *mut KbSessionRef, data: *const u8, dataLength: u32) -> KbStatus {
+    pub unsafe fn kb_execute(&self, session: *mut KbSessionRef, data: *const u8, dataLength: u32) -> KbStatus {
         unsafe { KbStatus::from_raw((self.raw.kb_execute)(session, data, dataLength)) }
     }
 }

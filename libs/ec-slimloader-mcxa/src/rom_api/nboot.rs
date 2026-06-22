@@ -403,19 +403,19 @@ impl NbootDriver {
         Self { raw }
     }
 
-    pub fn nboot_context_init(&self, ctx: *mut NbootCtx) -> NbootStatus {
+    pub unsafe fn nboot_context_init(&self, ctx: *mut NbootCtx) -> NbootStatus {
         unsafe { NbootStatus::from_raw((self.raw.nboot_context_init)(ctx)) }
     }
 
-    pub fn nboot_context_deinit(&self, ctx: *mut NbootCtx) -> NbootStatus {
+    pub unsafe fn nboot_context_deinit(&self, ctx: *mut NbootCtx) -> NbootStatus {
         unsafe { NbootStatus::from_raw((self.raw.nboot_context_deinit)(ctx)) }
     }
 
-    pub fn nboot_context_set_uuid(&self, ctx: *mut NbootCtx, uuid: *const u8) -> NbootStatus {
+    pub unsafe fn nboot_context_set_uuid(&self, ctx: *mut NbootCtx, uuid: *const u8) -> NbootStatus {
         unsafe { NbootStatus::from_raw((self.raw.nboot_context_set_uuid)(ctx, uuid)) }
     }
 
-    pub fn nboot_sb4_load_manifest(
+    pub unsafe fn nboot_sb4_load_manifest(
         &self,
         ctx: *mut NbootCtx,
         manifest: *const u32,
@@ -424,11 +424,11 @@ impl NbootDriver {
         unsafe { NbootStatus::from_raw((self.raw.nboot_sb4_load_manifest)(ctx, manifest, parms)) }
     }
 
-    pub fn nboot_sb4_load_block(&self, ctx: *mut NbootCtx, block: *mut u32) -> NbootStatus {
+    pub unsafe fn nboot_sb4_load_block(&self, ctx: *mut NbootCtx, block: *mut u32) -> NbootStatus {
         unsafe { NbootStatus::from_raw((self.raw.nboot_sb4_load_block)(ctx, block)) }
     }
 
-    pub fn nboot_sb4_check_authenticity_and_completeness_romapi(
+    pub unsafe fn nboot_sb4_check_authenticity_and_completeness_romapi(
         &self,
         ctx: *mut NbootCtx,
         address: *const u32,
@@ -441,7 +441,7 @@ impl NbootDriver {
         }
     }
 
-    pub fn nboot_img_authenticate_romapi(
+    pub unsafe fn nboot_img_authenticate_romapi(
         &self,
         ctx: *mut NbootCtx,
         image_start: *const u8,
@@ -458,7 +458,7 @@ impl NbootDriver {
         }
     }
 
-    pub fn nboot_mem_crypt_enable_encrypt_for_address_range(
+    pub unsafe fn nboot_mem_crypt_enable_encrypt_for_address_range(
         &self,
         ctx: *mut NbootCtx,
         region_number: NbootMemCryptRegion,
@@ -475,7 +475,8 @@ impl NbootDriver {
         }
     }
 
-    pub fn nboot_mem_crypt_range_checker(
+    #[expect(clippy::too_many_arguments)]
+    pub unsafe fn nboot_mem_crypt_range_checker(
         &self,
         ctx: *mut NbootCtx,
         operation: NbootMemCryptOperation,
@@ -500,7 +501,7 @@ impl NbootDriver {
         }
     }
 
-    pub fn nboot_background_hash_enable(&self, ctx: *mut NbootCtx, hash_dma_channel: u32) -> NbootStatus {
+    pub unsafe fn nboot_background_hash_enable(&self, ctx: *mut NbootCtx, hash_dma_channel: u32) -> NbootStatus {
         // should enum for DMA channel selection be added? (Answer is yes but which channels??) For now just pass 0 for default channel. By doing an enum,
         // we can impose limitations on valid values (e.g. if only 2 channels are supported, etc.)
         unsafe { NbootStatus::from_raw((self.raw.nboot_background_hash_enable)(ctx, hash_dma_channel)) }

@@ -1,3 +1,5 @@
+use embedded_storage_async::nor_flash::{ErrorType, NorFlash, NorFlashErrorKind, ReadNorFlash};
+
 use crate::error::FlashStatus;
 use crate::memory::{INTERNAL_FLASH_PAGE_SIZE, INTERNAL_FLASH_SECTOR_SIZE, JOURNAL_SIZE, JOURNAL_START};
 use crate::rom_api::{
@@ -5,8 +7,6 @@ use crate::rom_api::{
     FlashReadEccOption, FlashReadMarginOption, FlashReadSingleWordConfig, FlashSetReadModeConfig,
     FlashSetWriteModeConfig, FLASH_API_ERASE_KEY,
 };
-use embedded_storage_async::nor_flash::NorFlash;
-use embedded_storage_async::nor_flash::{ErrorType, NorFlashErrorKind, ReadNorFlash};
 
 pub struct InternalFlash {
     pub cfg: FlashConfig,
@@ -52,7 +52,7 @@ impl InternalFlash {
             return Ok(());
         }
         let flash_driver_api = flash_driver();
-        let status = flash_driver_api.flash_init(&mut self.cfg);
+        let status = unsafe { flash_driver_api.flash_init(&mut self.cfg) };
         if status != FlashStatus::Success {
             return Err(NorFlashErrorKind::Other);
         }
@@ -76,8 +76,10 @@ impl ReadNorFlash for InternalFlash {
             return Err(NorFlashErrorKind::OutOfBounds);
         }
         let flash_driver_api = flash_driver();
-        let abs = JOURNAL_START.checked_add(offset).ok_or(NorFlashErrorKind::OutOfBounds)?;
-        let status = flash_driver_api.flash_read(&mut self.cfg, abs, buf.as_mut_ptr(), read_len);
+        let abs = JOURNAL_START
+            .checked_add(offset)
+            .ok_or(NorFlashErrorKind::OutOfBounds)?;
+        let status = unsafe { flash_driver_api.flash_read(&mut self.cfg, abs, buf.as_mut_ptr(), read_len) };
         if status == FlashStatus::Success {
             Ok(())
         } else {
@@ -101,21 +103,24 @@ impl NorFlash for InternalFlash {
         if end > JOURNAL_SIZE {
             return Err(NorFlashErrorKind::OutOfBounds);
         }
-        if offset % INTERNAL_FLASH_PAGE_SIZE != 0 {
+        if !offset.is_multiple_of(INTERNAL_FLASH_PAGE_SIZE) {
             return Err(NorFlashErrorKind::NotAligned);
         }
         if data.len() > INTERNAL_FLASH_PAGE_SIZE as usize {
             return Err(NorFlashErrorKind::OutOfBounds);
         }
         let flash_driver_api = flash_driver();
-        let abs_start = JOURNAL_START.checked_add(offset).ok_or(NorFlashErrorKind::OutOfBounds)?;
+        let abs_start = JOURNAL_START
+            .checked_add(offset)
+            .ok_or(NorFlashErrorKind::OutOfBounds)?;
 
         // Page was erased prior to this write — fill rest with 0xFF and program.
         let mut page_buf = [0xFFu8; INTERNAL_FLASH_PAGE_SIZE as usize];
         page_buf[..data.len()].copy_from_slice(data); //safe as we checked bounds above.
 
-        let status =
-            flash_driver_api.flash_program_page(&mut self.cfg, abs_start, page_buf.as_ptr(), INTERNAL_FLASH_PAGE_SIZE);
+        let status = unsafe {
+            flash_driver_api.flash_program_page(&mut self.cfg, abs_start, page_buf.as_ptr(), INTERNAL_FLASH_PAGE_SIZE)
+        };
         if status != FlashStatus::Success {
             return Err(NorFlashErrorKind::Other);
         }
@@ -123,14 +128,16 @@ impl NorFlash for InternalFlash {
         // Verify programmed data via ROM API.
         let mut failed_address = 0u32;
         let mut failed_data = 0u32;
-        let status = flash_driver_api.flash_verify_program(
-            &mut self.cfg,
-            abs_start,
-            INTERNAL_FLASH_PAGE_SIZE,
-            page_buf.as_ptr(),
-            &mut failed_address,
-            &mut failed_data,
-        );
+        let status = unsafe {
+            flash_driver_api.flash_verify_program(
+                &mut self.cfg,
+                abs_start,
+                INTERNAL_FLASH_PAGE_SIZE,
+                page_buf.as_ptr(),
+                &mut failed_address,
+                &mut failed_data,
+            )
+        };
         if status != FlashStatus::Success {
             return Err(NorFlashErrorKind::Other);
         }
@@ -153,7 +160,9 @@ impl NorFlash for InternalFlash {
             return Err(NorFlashErrorKind::OutOfBounds);
         }
 
-        let len = to_aligned.checked_sub(from_aligned).ok_or(NorFlashErrorKind::OutOfBounds)?;
+        let len = to_aligned
+            .checked_sub(from_aligned)
+            .ok_or(NorFlashErrorKind::OutOfBounds)?;
         if len == 0 {
             return Ok(());
         }
@@ -162,7 +171,7 @@ impl NorFlash for InternalFlash {
         let abs = JOURNAL_START
             .checked_add(from_aligned)
             .ok_or(NorFlashErrorKind::OutOfBounds)?;
-        let status = flash_driver_api.flash_erase_sector(&mut self.cfg, abs, len, FLASH_API_ERASE_KEY);
+        let status = unsafe { flash_driver_api.flash_erase_sector(&mut self.cfg, abs, len, FLASH_API_ERASE_KEY) };
         if status == FlashStatus::Success {
             Ok(())
         } else {

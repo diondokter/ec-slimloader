@@ -230,11 +230,11 @@ impl FlashDriver {
         Self { raw }
     }
 
-    pub fn flash_init(&self, config: *mut FlashConfig) -> FlashStatus {
+    pub unsafe fn flash_init(&self, config: *mut FlashConfig) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.flash_init)(config)) }
     }
 
-    pub fn flash_erase_sector(
+    pub unsafe fn flash_erase_sector(
         &self,
         config: *mut FlashConfig,
         start: u32,
@@ -244,7 +244,7 @@ impl FlashDriver {
         unsafe { FlashStatus::from_raw((self.raw.flash_erase_sector)(config, start, length_in_bytes, key)) }
     }
 
-    pub fn flash_program_phrase(
+    pub unsafe fn flash_program_phrase(
         &self,
         config: *mut FlashConfig,
         start: u32,
@@ -254,7 +254,7 @@ impl FlashDriver {
         unsafe { FlashStatus::from_raw((self.raw.flash_program_phrase)(config, start, src, length_in_bytes)) }
     }
 
-    pub fn flash_program_page(
+    pub unsafe fn flash_program_page(
         &self,
         config: *mut FlashConfig,
         start: u32,
@@ -264,7 +264,7 @@ impl FlashDriver {
         unsafe { FlashStatus::from_raw((self.raw.flash_program_page)(config, start, src, length_in_bytes)) }
     }
 
-    pub fn flash_verify_program(
+    pub unsafe fn flash_verify_program(
         &self,
         config: *mut FlashConfig,
         start: u32,
@@ -285,19 +285,34 @@ impl FlashDriver {
         }
     }
 
-    pub fn flash_verify_erase_phrase(&self, config: *mut FlashConfig, start: u32, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn flash_verify_erase_phrase(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.flash_verify_erase_phrase)(config, start, length_in_bytes)) }
     }
 
-    pub fn flash_verify_erase_page(&self, config: *mut FlashConfig, start: u32, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn flash_verify_erase_page(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.flash_verify_erase_page)(config, start, length_in_bytes)) }
     }
 
-    pub fn flash_verify_erase_sector(&self, config: *mut FlashConfig, start: u32, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn flash_verify_erase_sector(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.flash_verify_erase_sector)(config, start, length_in_bytes)) }
     }
 
-    pub fn flash_get_property(
+    pub unsafe fn flash_get_property(
         &self,
         config: *mut FlashConfig,
         which_property: FlashPropertyTag,
@@ -306,19 +321,40 @@ impl FlashDriver {
         unsafe { FlashStatus::from_raw((self.raw.flash_get_property)(config, which_property as u32, value)) }
     }
 
-    pub fn ifr_verify_erase_phrase(&self, config: *mut FlashConfig, start: u32, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn ifr_verify_erase_phrase(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.ifr_verify_erase_phrase)(config, start, length_in_bytes)) }
     }
 
-    pub fn ifr_verify_erase_page(&self, config: *mut FlashConfig, start: u32, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn ifr_verify_erase_page(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.ifr_verify_erase_page)(config, start, length_in_bytes)) }
     }
 
-    pub fn ifr_verify_erase_sector(&self, config: *mut FlashConfig, start: u32, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn ifr_verify_erase_sector(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.ifr_verify_erase_sector)(config, start, length_in_bytes)) }
     }
 
-    pub fn flash_read(&self, config: *mut FlashConfig, start: u32, dest: *mut u8, length_in_bytes: u32) -> FlashStatus {
+    pub unsafe fn flash_read(
+        &self,
+        config: *mut FlashConfig,
+        start: u32,
+        dest: *mut u8,
+        length_in_bytes: u32,
+    ) -> FlashStatus {
         unsafe { FlashStatus::from_raw((self.raw.flash_read)(config, start, dest, length_in_bytes)) }
     }
 

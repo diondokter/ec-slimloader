@@ -65,7 +65,7 @@ impl RomApi {
         Self { raw }
     }
 
-    pub fn run_bootloader(&self, arg: *const u32) {
+    pub unsafe fn run_bootloader(&self, arg: *const u32) {
         unsafe { (self.raw.run_bootloader)(arg) }
     }
 
@@ -231,7 +231,7 @@ enum RunBootRecoveryBootCfg0 {
 pub fn run_bootloader_uart() -> ! {
     // Build arg: tag 0xEB, mode ISP(1), interface UART(1)
     let arg: u32 = RunBootTag::EnterBoot as u32 | RunBootMode::IspBoot as u32 | RunBootIspInterface::Uart as u32;
-    bootloader_tree().run_bootloader(&arg as *const u32);
+    unsafe { bootloader_tree().run_bootloader(&arg as *const u32) };
     loop {
         core::hint::spin_loop()
     }

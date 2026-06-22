@@ -1,4 +1,5 @@
 use core::arch::asm;
+
 use cortex_m::asm::{dsb, isb};
 
 #[cfg(any(feature = "defmt", feature = "log"))]
@@ -14,7 +15,6 @@ macro_rules! jump_error {
 }
 
 pub unsafe fn jump_to_image(entry: u32) -> ! {
-
     // Guards: validate image header fields (Table 204 Nx4x security reference manual)
 
     let image_len = *((entry + 0x20) as *const u32);
