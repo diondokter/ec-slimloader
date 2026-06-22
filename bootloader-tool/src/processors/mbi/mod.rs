@@ -7,11 +7,11 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, anyhow, bail};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use rsa::RsaPrivateKey;
 use rsa::pkcs1v15::{Signature, SigningKey};
 use rsa::pkcs8::DecodePrivateKey;
-use rsa::signature::{SignatureEncoding, SignerMut, Verifier};
+use rsa::signature::{SignatureEncoding, Signer, Verifier};
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 use x509_parser::asn1_rs::FromDer;
@@ -354,7 +354,7 @@ pub fn sign(
 ) -> anyhow::Result<()> {
     let private_key = std::fs::read_to_string(private_key_path)?;
     let private_key = RsaPrivateKey::from_pkcs8_pem(&private_key)?;
-    let mut signing_key = SigningKey::<Sha256>::new(private_key);
+    let signing_key = SigningKey::<Sha256>::new(private_key);
 
     let signing_body = std::fs::read(&prepared_path)?;
     let signature = signing_key.sign(&signing_body);

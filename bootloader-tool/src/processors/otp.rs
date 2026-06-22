@@ -1,6 +1,5 @@
-use aes::Aes256;
-use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockEncrypt, KeyInit};
+use aes::cipher::{BlockCipherEncrypt, KeyInit};
+use aes::{Aes256, Block};
 use anyhow::Context;
 
 use crate::config::Config;
@@ -37,7 +36,7 @@ impl Otp {
     pub fn hmac_key(&self) -> anyhow::Result<HmacKey> {
         // See UM11147 page 1246, 43.2.3.1 HMAC_KEY
         let aes = Aes256::new_from_slice(&self.0)?;
-        let mut block = GenericArray::from([0u8; 16]);
+        let mut block = Block::from([0u8; 16]);
         aes.encrypt_block(&mut block);
 
         Ok(HmacKey(block.as_slice().try_into().unwrap()))
