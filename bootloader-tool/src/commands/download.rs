@@ -2,7 +2,6 @@ use std::path::Path;
 
 use DownloadCommands::Other;
 use anyhow::Context;
-use probe_rs::flashing::ElfOptions;
 use probe_rs::{Session, flashing};
 
 use crate::commands::sign::SignOutput;
@@ -83,7 +82,7 @@ pub async fn process_other(config: &Config, command: RunCommands) -> anyhow::Res
     flashing::download_file_with_options(
         &mut session,
         output_path,
-        flashing::Format::Bin(flashing::BinOptions {
+        flashing::BinLoader(flashing::BinOptions {
             base_address: Some(flash_start),
             skip: 0,
         }),
@@ -104,7 +103,7 @@ async fn download_prelude(path: &Path, probe_args: &ProbeArgs) -> anyhow::Result
     flashing::download_file_with_options(
         &mut session,
         path,
-        flashing::Format::Elf(ElfOptions::default()),
+        flashing::ElfLoader(flashing::ElfOptions::default()),
         options,
     )
     .context("Failed to flash binary")?;

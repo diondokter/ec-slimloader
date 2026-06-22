@@ -1,10 +1,12 @@
+use std::str::FromStr;
+
 use probe_rs::probe::DebugProbeSelector;
 use probe_rs::probe::list::Lister;
 use probe_rs::{Permissions, Session};
 
 pub async fn start_session(chip: &str, probe_selector: Option<String>) -> anyhow::Result<Session> {
     let session = if let Some(ref probe) = probe_selector {
-        Lister::new().open(DebugProbeSelector::try_from(&**probe)?)?
+        Lister::new().open(DebugProbeSelector::from_str(probe)?)?
     } else {
         let probes = Lister::new().list_all();
         let probe = match probes.len() {
