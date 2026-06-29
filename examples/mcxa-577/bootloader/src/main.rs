@@ -7,6 +7,7 @@ use defmt_or_log::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use panic_halt as _;
+use ec_slimloader_mcxa as _;
 
 const JOURNAL_BUFFER_SIZE: usize = 4096;
 
@@ -15,7 +16,10 @@ defmt::timestamp!("{=u32}", 0);
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) -> ! {
-    #[cfg(any(feature = "defmt", feature = "log"))]
-    info!("Starting MCXA bootloader");
-    ec_slimloader::start::<ec_slimloader_mcxa::McxaBoard, JOURNAL_BUFFER_SIZE>(ec_slimloader_mcxa::Config).await
+    loop {
+        #[cfg(any(feature = "defmt", feature = "log"))]
+        info!("Starting MCXA bootloader");
+        cortex_m::asm::delay(100000);
+    }
+    // ec_slimloader::start::<ec_slimloader_mcxa::McxaBoard, JOURNAL_BUFFER_SIZE>(ec_slimloader_mcxa::Config).await
 }

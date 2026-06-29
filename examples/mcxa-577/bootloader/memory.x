@@ -8,7 +8,7 @@ MEMORY
 
   /* Secure SRAM alias: 0x3000_0000 (Matrix0 Target Port 4, Secure, All Initiators).
    */
-  RAM (rwx) : ORIGIN = 0x30000000, LENGTH = 64K
+  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 64K
 }
 
 /* Stack grows down from end of RAM */

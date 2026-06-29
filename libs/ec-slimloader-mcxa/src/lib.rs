@@ -23,9 +23,6 @@ use embassy_mcxa::clocks::config::{
     CoreSleep, Div8, FircConfig, FircFreqSel, FlashSleep, MainClockConfig, MainClockSource, VddDriveStrength, VddLevel,
 };
 use embassy_mcxa::clocks::PoweredClock;
-pub use embassy_mcxa::sgi;
-pub use embassy_mcxa::sgi::hash::{BlockingHasher, HashMode, HashOptions, HashSize, StreamingHasher};
-pub use embassy_mcxa::sgi::{hash, Async, Blocking, InterruptHandler, SetupError as SgiSetupError, Sgi, SgiError};
 use embassy_mcxa::{peripherals, Peri};
 use embedded_storage_async::nor_flash::NorFlash;
 use flash_internal::InternalFlash;

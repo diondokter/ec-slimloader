@@ -26,7 +26,7 @@ outputImageAuthenticationType: signed
 masterBootOutputFile: my_mbi.bin
 # ------------------------------------===== Plain application image [Required] =====------------------------------------
 # Description: The input application image to by modified to Master Boot Image.
-inputImageFile: R:\ec-slimloader\examples\mcxa-577\bootloader\target\thumbv8m.main-none-eabihf\release\mcxa-577app-bootloader
+inputImageFile: ../examples/mcxa-577/bootloader/target/thumbv8m.main-none-eabihf/release/mcxa-577app-bootloader
 # --------------------------------===== Loading address of application [Optional] =====---------------------------------
 # Description: Application loading address in RAM if not XiP, otherwise address of load in XiP.
 outputImageExecutionAddress: 0
@@ -62,13 +62,12 @@ used_srk_id: 0
 # Description: Signature provider configuration in format 'type=<identifier>;<key1>=<value1>;<key2>=<value2>' or a
 # private key used for sign the container header. Header can be signed by SRK. The referenced SRK must not have been
 # revoked.
-# signer: type=file;file_path=my_prv_key.pem
+signer: ecdsa_p384_key.pem
 # ---------------------===== AHAB container signer for second signature (PQC only) [Optional] =====---------------------
 # Description: Signature provider configuration in format 'type=<identifier>;<key1>=<value1>;<key2>=<value2>' or a
 # private key used for second sign (PQC only) of the container header. Header can be signed by SRK. The referenced SRK
 # must not have been revoked.
-# signer_#2: type=file;file_path=my_prv_key.pem
-
+signer_#2: mldsa87_private.pem
 # ======================================================================================================================
 #                                         == Configuration of AHAB SRK table ==                                         
 # ======================================================================================================================
@@ -113,7 +112,7 @@ srk_table:
 # -------------------------------------===== The AHAB certificate [Optional] =====--------------------------------------
 # Description: The file that contains AHAB certificate. It could be used already prepared binary form signed by SRK, or
 # it is possible to use configuration YAML file of certificate and the AHAB export process it will export it itself.
-# certificate: my_ahab_certificate.bin
+certificate: cert_block.bin
 # ---------------------------------------===== Images HASH type [Optional] =====----------------------------------------
 # Description: HASH type of image.
 # Possible options: <sha256, sha384>
