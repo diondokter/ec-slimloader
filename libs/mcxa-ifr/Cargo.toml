@@ -1,0 +1,13 @@
+[package]
+name = "mcxa-ifr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+bitbybit = "2.0.0"
+arbitrary-int = "2.1.0"
+
+[lints]
+workspace = true

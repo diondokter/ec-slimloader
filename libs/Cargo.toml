@@ -6,6 +6,7 @@ members = [
     "ec-slimloader-state",
     "ec-slimloader-mcxa",
     "imxrt-rom",
+    "mcxa-ifr",
 ]
 
 [workspace.package]
@@ -18,7 +19,7 @@ repository = "https://github.com/OpenDevicePartnership/ec-slimloader"
 manual_let_else = "deny"
 
 [workspace.dependencies]
-defmt = "0.3.7"
+defmt = "1.1.0"
 defmt-or-log = { version = "0.2.2", default-features = false }
 embedded-storage-async = "0.4.1"
 embassy-futures = "0.1"
@@ -29,7 +30,7 @@ embassy-sync = "0.8.0"
 log = "0.4"
 
 cortex-m = { version = "0.7.7" }
-panic-probe = "0.3"
+panic-probe = "1.0.0"
 arbitrary = "1.4"
 crc = "3.2"
 num_enum = { version = "0.7", default-features = false }
