@@ -1,6 +1,8 @@
 //! Data layout for the IFR CFPA & CMPA
 #![no_std]
 
+use core::ops::{Index, IndexMut};
+
 use bitbybit::{bitenum, bitfield};
 
 #[repr(C)]
@@ -125,67 +127,86 @@ pub struct CFPA {
     pub lp_fw_version: u32,
     pub rotk_revoke: RotkRevoke,
     pub _reserved0: [u32; 3],
+    /// Authentication failure counter.
+    ///
+    /// This monotonic counter field is incremented by boot ROM on authentication failure during boot, SB3, or debug authentication (Monotonic counter).
     pub err_auth_fail_count: u32,
+    /// Tamper event counter.
+    ///
+    /// This monotonic counter field is incremented by boot ROM whenever the reset cause during boot is detected as
+    /// - ITRC reset caused by security sensors or
+    /// - WDT 0/1 reset or
+    /// - Tamper pin reset.
     pub err_itrc_count: u32,
     pub _reserved1: [u32; 2],
-    pub mctr_iped_ctx0: u32,
-    pub mctr_iped_ctx1: u32,
-    pub mctr_iped_ctx2: u32,
-    pub mctr_iped_ctx3: u32,
-    pub mctr_iped_ctx4: u32,
-    pub mctr_iped_ctx5: u32,
-    pub mctr_iped_ctx6: u32,
-    pub mctr_iped_ctx7: u32,
-    pub mctr_cust_ctr0: u32,
-    pub mctr_cust_ctr1: u32,
-    pub mctr_cust_ctr2: u32,
-    pub mctr_cust_ctr3: u32,
-    pub mctr_cust_ctr4: u32,
-    pub mctr_cust_ctr5: u32,
-    pub mctr_cust_ctr6: u32,
-    pub mctr_cust_ctr7: u32,
-    pub mflag_cust_0: u32,
-    pub mflag_cust_1: u32,
-    pub mflag_cust_2: u32,
-    pub mflag_cust_3: u32,
-    pub mflag_cust_4: u32,
-    pub mflag_cust_5: u32,
-    pub mflag_cust_6: u32,
-    pub mflag_cust_7: u32,
-    pub flash_acl_0_7: u32,
-    pub flash_acl_8_15: u32,
-    pub flash_acl_16_23: u32,
-    pub flash_acl_24_31: u32,
-    pub flash_acl_32_39: u32,
-    pub flash_acl_40_47: u32,
-    pub flash_acl_48_55: u32,
-    pub flash_acl_55_63: u32,
+    /// Monotonic erase counter for IPED region 0 through 7.
+    ///  
+    /// This value is used by bootloader to dynamically compute region IV.
+    /// This counter will increment by one, during each erase cycle of the corresponding flash region.
+    /// User should not write anything in this field. This field is entirely handled by ROM.
+    ///
+    /// Final IV value for given region used by IPED for encryption/decryption is computed by ROM bootloader and incorporates device UUID, IPED region number and MCTR_IPED_CTXn.
+    /// Application should always use ROM APIs to erase whole Prince region to keep IV consistent.
+    pub mctr_iped_ctx: [u32; 8],
+    /// Monotonic counter for application use.
+    ///
+    /// ROM enforces monotonic increment check during CFPA-CMAC page update.
+    /// If the new counter value is less than the value in active CFPA page, then the update is rejected and CMAC signing is skipped.
+    pub mctr_cust_ctr: [u32; 8],
+    /// Monotonic flags for application use.
+    ///
+    /// Once a bit is set in this field it should be set on sub-sequent updates of the page. ROM emulates One Time Programmable (OTP) bits behavior during CFPA-CMAC update.
+    /// Compared to current value, if the new value has bit cleared, then the update is rejected and CMAC signing is skipped.
+    pub mflag_cust: [u32; 8],
+    pub flash_acl: [FlashAcl; 8],
     pub _reserved2: [u32; 8],
-    pub sbl_img0_cmac_cache_127_96: u32,
-    pub sbl_img0_cmac_cache_95_64: u32,
-    pub sbl_img0_cmac_cache_63_32: u32,
-    pub sbl_img0_cmac_cache_31_0: u32,
-    pub img1_cmac_cache_127_96: u32,
-    pub img1_cmac_cache_95_64: u32,
-    pub img1_cmac_cache_63_32: u32,
-    pub img1_cmac_cache_31_0: u32,
+    /// CMAC of hash (SHA384/256) of authenticated image manifest.
+    pub sbl_img0_cmac_cache: ReverseArray<u32, 4>,
+    /// CMAC of hash (SHA384/256) of authenticated image manifest.
+    pub img1_cmac_cache: ReverseArray<u32, 4>,
     pub _reserved3: [u32; 4],
+    /// Vector address when waking from power-down states when CMPA.LP_SEC_BOOT is set to 2b'10.
     pub lp_vector_addr: u32,
     pub _reserved4: [u32; 23],
-    pub iped_gcm_aad_ctx0: u32,
-    pub iped_gcm_aad_ctx1: u32,
-    pub iped_gcm_aad_ctx2: u32,
-    pub iped_gcm_aad_ctx3: u32,
-    pub iped_gcm_aad_ctx4: u32,
-    pub iped_gcm_aad_ctx5: u32,
-    pub iped_gcm_aad_ctx6: u32,
-    pub iped_gcm_aad_ctx7: u32,
+    /// Additional Authentication Data for IPED context
+    pub iped_gcm_aad_ctx: [u32; 8],
     pub _reserved5: [u32; 20],
 }
 
 impl CFPA {
     pub const DEVCFG_ADDR: u32 = 0x0100_0010;
     pub const SCRATCH_ADDR: u32 = 0x0100_2010;
+    pub const ZERO: Self = Self {
+        header: Header::ZERO,
+        cfpa_page_version: 0,
+        image_key_revoke: 0,
+        dbg_revoke_vu: DbgRevokeVu::ZERO,
+        ee0_fw_version: 0,
+        ee1_fw_version: 0,
+        ee2_fw_version: 0,
+        ee3_fw_version: 0,
+        fmc_sbl_fw_version: 0,
+        recovery_sb3_version: 0,
+        update_sb3_version: 0,
+        lp_fw_version: 0,
+        rotk_revoke: RotkRevoke::ZERO,
+        _reserved0: [0; _],
+        err_auth_fail_count: 0,
+        err_itrc_count: 0,
+        _reserved1: [0; _],
+        mctr_iped_ctx: [0; _],
+        mctr_cust_ctr: [0; _],
+        mflag_cust: [0; _],
+        flash_acl: [FlashAcl::ZERO; _],
+        _reserved2: [0; _],
+        sbl_img0_cmac_cache: ReverseArray::new([0; _]),
+        img1_cmac_cache: ReverseArray::new([0; _]),
+        _reserved3: [0; _],
+        lp_vector_addr: 0,
+        _reserved4: [0; _],
+        iped_gcm_aad_ctx: [0; _],
+        _reserved5: [0; _],
+    };
 }
 
 #[bitfield(u32)]
@@ -258,7 +279,7 @@ pub struct RotkRevoke {
     pub rotk_en: [RotkEn; 4],
 }
 
-/// Active image indicatior used in ISP mode to manage SWAP enable before reciev-sb command.
+/// Active image indicator used in ISP mode to manage SWAP enable before reciev-sb command.
 #[bitenum(u2)]
 pub enum IspActivImg {
     SwapIsDisabled = 0b00,
@@ -274,6 +295,38 @@ pub enum RotkEn {
     Revoked2 = 0b11,
 }
 
+/// Select one of the 8 pre-defined access control attributes for the given sector. Access attributes control read, write and execute access along with sticky lock protection.
+///
+/// After a locked access level is selected, the sub-sequent updates of this field can be done with higher lock level only.
+/// - If current sector ACL value (GLBACn index) is greater than the new value, then it is permitted except if the new value is 4 or 5.
+///   - 7 (___L) > 6 (__XL) > 3 (R__L) > 2 (R_XL) > 1 (RW_L) > 0 (RWX_)
+/// - If current sector ACL value is 0, 4, or 5 then any new value is permitted.
+#[bitfield(u32)]
+pub struct FlashAcl {
+    #[bits(0..=2, rw, stride = 4)]
+    pub acl_sec: [AclSec; 8],
+}
+
+#[bitenum(u3, exhaustive = true)]
+pub enum AclSec {
+    /// Default flash memory behavior: R/W unlocked
+    Default = 0,
+    /// Data flash memory with this setting: R/W + locked
+    Data = 1,
+    /// ROM with this setting: RX + locked
+    RomData = 2,
+    /// Data read-only memory (DROM) with this setting: ROM + locked
+    DataReadOnly = 3,
+    /// ROM with this setting: RX unlocked
+    Rom = 4,
+    /// XOM with this setting: XOM unlocked
+    Xom = 5,
+    /// XOM with this setting: XOM + locked
+    XomData = 6,
+    /// Hidden (no access + locked)
+    Hidden = 7,
+}
+
 #[repr(C)]
 pub struct CMPA {}
 
@@ -282,13 +335,39 @@ impl CMPA {
     pub const SCRATCH_ADDR: u32 = 0x0100_2200;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// An array that stores the elements in reverse order, but is interacted with in normal order
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(C)]
+pub struct ReverseArray<T, const N: usize>([T; N]);
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl<T, const N: usize> ReverseArray<T, N> {
+    /// Create a reverse array based on an array in the normal order
+    pub const fn new(mut data: [T; N]) -> Self {
+        data.reverse();
+        Self(data)
+    }
+}
+
+impl<T, const N: usize> Index<usize> for ReverseArray<T, N> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[N - 1 - index]
+    }
+}
+
+impl<T, const N: usize> IndexMut<usize> for ReverseArray<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[N - 1 - index]
+    }
+}
+
+impl<T, const N: usize> IntoIterator for ReverseArray<T, N> {
+    type Item = T;
+
+    type IntoIter = core::iter::Rev<core::array::IntoIter<T, N>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter().rev()
     }
 }
