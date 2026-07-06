@@ -3,6 +3,7 @@
 
 use core::ops::{Index, IndexMut};
 
+use arbitrary_int::{u10, u3, u4, u5, u7};
 use bitbybit::{bitenum, bitfield};
 
 #[repr(C)]
@@ -328,11 +329,529 @@ pub enum AclSec {
 }
 
 #[repr(C)]
-pub struct CMPA {}
+pub struct CMPA {
+    boot_cfg0: BootCfg0,
+    boot_cfg1: BootCfg1,
+    boot_led_status: BootLedStatus,
+    boot_timers: BootTimers,
+    lspi_qflash_cfg0: LspiQflashCfg0,
+    lspi_qflash_cfg1: LspiQflashCFG1,
+    lspi_flash_cfg0: u32, // Reserved
+    lspi_flash_cfg1: u32, // TODO
+    isp_uart_cfg: u32,    // TODO
+    isp_i2c_cfg: u32,     // TODO
+    isp_can_cfg: u32,     // TODO
+    isp_spi_cfg0: u32,    // TODO
+    isp_spi_cfg1: u32,    // TODO
+    isp_usb_id: u32,      // TODO
+    isp_usb_cfg: u32,     // TODO
+    isp_misc_cfg: u32,    // TODO
+    cc_socu_pin: u32,     // TODO
+    cc_socu_dflt: u32,    // TODO
+    vendor_usage: u32,    // TODO
+    _reserved0: [u32; 1],
+    secure_boot_cfg: SecureBootCfg,
+    ro_tk_usage: u32, // Not yet done
+    sbl_start_addr: u32,
+    err_log_addr: u32,
+    /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
+    /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage .
+    ///
+    /// For SHA256 the bytes padded with 4 zero bytes at the start.
+    rotkh: ReverseArray<u32, 12>,
+    /// CUST_MK_SK is stored in form of RFC3394 blob and it is used by bootloader to decrypt SB3.1 encryption key during processing of SB file by bootloader.
+    /// CUST_MK_SK is generated during device provisioning process by HSM_KEY_GEN (random key) or by HSM_STORE_KEY (user defined key) commands.
+    /// To store this key into CMPA, SB_STORE_KEY command should be used.
+    cust_mk_sk_key_blob: [u32; 12],
+    /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
+    /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage.
+    pqc_rotkh: ReverseArray<u32, 12>,
+    quick_set_gpio_0: u32,
+    quick_clr_gpio_0: u32,
+    quick_set_gpio_1: u32,
+    quick_clr_gpio_1: u32,
+    quick_set_gpio_2: u32,
+    quick_clr_gpio_2: u32,
+    quick_set_gpio_3: u32,
+    quick_clr_gpio_3: u32,
+    quick_set_gpio_4: u32,
+    quick_clr_gpio_4: u32,
+    quick_set_gpio_5: u32,
+    quick_clr_gpio_5: u32,
+    _reserved1: [u32; 4],
+    iped0_start: u32,
+    iped0_end: u32,
+    iped1_start: u32,
+    iped1_end: u32,
+    iped2_start: u32,
+    iped2_end: u32,
+    iped3_start: u32,
+    iped3_end: u32,
+    iped4_start: u32,
+    iped4_end: u32,
+    iped5_start: u32,
+    iped5_end: u32,
+    iped6_start: u32,
+    iped6_end: u32,
+    iped7_start: u32,
+    iped7_end: u32,
+    _reserved2: [u32; 19],
+    dice_x509_sram_buf_len: DiceX509SramBufLen,
+    dice_x509_ecdsa_sram_addr: u32,
+    /// If set as zero, then use the 0x30002000 RAM address as the default.
+    dice_x509_mldsa_sram_addr: u32,
+    /// If set as zero, then use the 0x30019000 RAM address as the default.
+    dice_alias_key_sram_addr: u32,
+    /// Certificate template structure for MLDSA alias key identity.
+    mldsa_cert_temp_addr: u32,
+    /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
+    /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage .
+    mldsa_cert_temp_hash: ReverseArray<u32, 12>,
+}
 
 impl CMPA {
     pub const DEVCFG_ADDR: u32 = 0x0100_0200;
     pub const SCRATCH_ADDR: u32 = 0x0100_2200;
+}
+
+#[bitfield(u32)]
+pub struct BootCfg0 {
+    /// CMPA Header marker should be set to 0x5963. After this header is set, all non-zero values will take effect; leaving all settings at 0xff will cause undefined behavior. It is recommended to set all values to 0x00 before setting the CMPA header value.
+    #[bits(16..=31, rw)]
+    pub marker: u16,
+    /// Boot speed. Selects the core frequency and voltage to use during ROM execution.
+    #[bits(12..=13, rw)]
+    pub boot_speed: BootSpeed,
+    /// Recovery boot enable.
+    #[bits(8..=9, rw)]
+    pub rec_boot_en: BigBool,
+    /// Enable external flash(LSPI) as recovery boot media.
+    #[bit(5, rw)]
+    pub rec_lspi: bool,
+
+    /// Enable external flash(FlexSPI) as recovery boot media.
+    #[bit(4, rw)]
+    pub rec_flexspi: bool,
+    /// Enable dual image boot from external flash as primary boot media.
+    #[bit(3, rw)]
+    pub eflash_dual_en: bool,
+    /// Enable external flash (FlexSPI) as primary boot media.
+    #[bit(2, rw)]
+    pub eflash_booten: bool,
+    /// Enable dual image boot from internal flash as primary boot media.
+    #[bit(1, rw)]
+    pub iflash_dual_en: bool,
+    /// Enable internal flash as primary boot media.
+    #[bit(0, rw)]
+    pub iflash_booten: bool,
+}
+
+/// Boot speed. Selects the core frequency and voltage to use during ROM execution.
+#[bitenum(u2, exhaustive = true)]
+pub enum BootSpeed {
+    // 48MHz, FRO192, // default boot speed. If CMPA header is not valid, should boot from 48MHz MD mode.
+    MdMode = 0b00,
+    // 96MHz, FRO192,
+    SdMode = 0b01,
+    // 200MHz, SPLL,
+    OdMode = 0b10,
+    // 250MHz, SPLL, // The actual speed will be depending on test results.
+    OdModePlus = 0b11,
+}
+
+/// All true variants mean the same to the boot rom
+#[bitenum(u2, exhaustive = true)]
+pub enum BigBool {
+    False = 0b00,
+    True = 0b01,
+    True1 = 0b10,
+    True2 = 0b11,
+}
+
+/// All false variants mean the same to the boot rom
+#[bitenum(u2, exhaustive = true)]
+pub enum InverseBigBool {
+    True = 0b00,
+    False = 0b01,
+    False1 = 0b10,
+    False2 = 0b11,
+}
+
+#[bitfield(u32)]
+pub struct BootCfg1 {
+    /// Customer extended CMPA size expressed as multiple of 32 bytes.
+    ///
+    /// Total CMPA area = CMPA_BASE_ADDR + 32 * EXT_CMPA32B_SIZE.  
+    /// The minimum value for this field should be 16 and max value 160.
+    #[bits(24..=31, rw)]
+    pub ext_cmpa_32b_size: u8,
+    /// Flash remap size.
+    ///
+    /// FLASH_REMAP_SIZE defines the size of the secondary boot image
+    /// (the range of flash addresses that will be remapped)in internal flash, where remapped
+    /// address end = (FLASH_REMAP_SIZE + 1) * 32 KB. For example, if FLASH_REMAP_SIZE = 2,
+    /// then the first 96KB of addresses will be remapped to flash bank1 instead of flash bank0
+    /// when remap is active. Set this field to 0  if you do not want to use the flash remap feature
+    #[bits(16..=20, rw)]
+    pub flash_remap_size: u5,
+    /// Disable ISP mode entry on image authentication failure.
+    #[bits(14..=15, rw)]
+    pub isp_ft_entry: BigBool,
+    /// Disable ISP mode entry through ROM API call.
+    /// ISP mode can be entered through ROM API invocation
+    #[bits(12..=13, rw)]
+    pub isp_api_entry: BigBool,
+    /// Disable ISP mode entry through debug mailbox command.
+    #[bits(10..=11, rw)]
+    pub isp_dm_entry: BigBool,
+    /// Disable ISP mode entry  through pin assertion.
+    #[bits(8..=9, rw)]
+    pub isp_pin_entry: BigBool,
+    /// ISP interface enable
+    #[bit(4, rw)]
+    pub isp_usb_en: bool,
+    /// ISP interface enable
+    #[bit(3, rw)]
+    pub isp_i2c_en: bool,
+    /// ISP interface enable
+    #[bit(2, rw)]
+    pub isp_can_en: bool,
+    /// ISP interface enable
+    #[bit(1, rw)]
+    pub isp_spi_en: bool,
+    /// ISP interface enable
+    #[bit(0, rw)]
+    pub isp_uart_en: bool,
+}
+
+#[bitfield(u32)]
+pub struct BootLedStatus {
+    /// Assert on fatal errors during boot.
+    ///
+    /// ROM drives the GPIO pin high identified by this field whenever primary boot fails due to fatal errors before locking-up/reset.
+    /// P0_0 and P0_1 are not supported.
+    /// If this feature is not use then set this field to 0x00.
+    #[bits(16..=23, rw)]
+    pub boot_fail_led: Gpio,
+    /// Assert on ISP fall through.
+    ///
+    /// ROM drives the GPIO pin high identified by this field whenever primary boot fails and execution falls through to ISP mode.
+    /// P7_31 is not supported.
+    /// If this feature is not use then set this field to 0xFF.
+    #[bits(8..=15, rw)]
+    pub isp_boot_led: Gpio,
+    /// Assert on recovery boot.
+    ///
+    /// ROM drives the GPIO pin high, identified by this field whenever primary boot fails and fall through to recovery boot source.
+    /// P7_31 is not supported.
+    /// If this feature is not use then set this field to 0xFF.
+    #[bits(0..=7, rw)]
+    pub rec_boot_led: Gpio,
+}
+
+#[bitfield(u8)]
+pub struct Gpio {
+    #[bits(5..=7, rw)]
+    pub port: u3,
+    #[bits(0..=4, rw)]
+    pub pin: u5,
+}
+
+#[bitfield(u32)]
+pub struct BootTimers {
+    /// WDOG timeout:
+    ///
+    /// Upper 16 bits of 24-bit count value in WWDT0_TC register Timeout value in seconds. The lower 8 bits of  WWDT0_TC are set to 0.
+    /// When a non-zero value is programmed in this field ROM configures the watch dog timer to reset the device on timeout before passing execution control to user code.
+    #[bits(16..=31, rw)]
+    pub wdog_timeout_count: u16,
+    /// Powerdown timeout:
+    ///
+    /// ISP mode peripheral detection timeout value in seconds.
+    /// If a non-zero value is program and peripheral activity is not detected within the number of seconds specified here, then the device will go to power down mode to conserve power.    
+    #[bits(0..=15, rw)]
+    pub powerdown_timeout_secs: u16,
+}
+
+#[bitfield(u32)]
+pub struct LspiQflashCfg0 {
+    /// Quad SPI port
+    #[bits(30..=31, rw)]
+    pub qspi_port: Option<QspiPort>,
+    /// Delay after POR before accessing Quad/Octal-SPI flash devices in addition to delay defined by FLEXSPI_HOLD TIME field.
+    #[bits(25..=28, rw)]
+    pub qspi_pwr_hold_time: QspiPwrHoldTime,
+    /// Delay after reset before accessing Quad/Octal-SPI flash devices.
+    /// Note, for POR in addition to this wait time FLEXSPI_PWR_HOLD_TIME is added.
+    #[bits(23..=24, rw)]
+    pub qspi_hold_time: QspiHoldTime,
+    /// When FLEXSPI_RESET_ENABLE = 1, this field determines the GPIO  pin number to use for O/QSPI reset function.
+    #[bits(18..=22, rw)]
+    pub qspi_reset_gpio_pin: u5,
+    /// When FLEXSPI_RESET_ENABLE = 1, this field determines the GPIO  port number to use for O/QSPI reset function.
+    #[bits(15..=17, rw)]
+    pub qspi_reset_gpio_port: u3,
+    /// Use O/QSPI_RESET_PIN to reset the flash device.
+    #[bit(14, rw)]
+    pub qspi_reset_enable: bool,
+    /// Q/O-SPI flash interface frequency.
+    /// Note, this field is used when FLEXSPI_AUTO_PROBE_EN is set.
+    #[bits(11..=13, rw)]
+    pub qspi_frequency: Option<QspiFrequency>,
+    /// Quad/Octal-SPI dummy cycles for read command.
+    ///
+    /// If a non-zero value is programmed in this field, then the value is used to override the default number of dummy cycles for a fast read command read from the serial flash’s SFDP information.
+    ///
+    /// Note: this field is only used if FLEXSPI_AUTO_PROBE_EN is set.
+    #[bits(7..=10, rw)]
+    pub qspi_dummy_cycles: u4,
+    #[bit(0, rw)]
+    pub qspi_auto_probe_en: bool,
+}
+
+#[bitenum(u2)]
+pub enum QspiPort {
+    /// 4-bit
+    PortA1 = 0b00,
+    /// 4-bit
+    PortB1 = 0b01,
+    /// 8-bit
+    PortA1B1 = 0b10,
+}
+
+#[bitenum(u4, exhaustive = true)]
+pub enum QspiPwrHoldTime {
+    NoDelay = 0b0000,
+    WaitAdditional100Microseconds = 0b0001,
+    WaitAdditional500Microseconds = 0b0010,
+    WaitAdditional1Millisecond = 0b0011,
+    WaitAdditional10Milliseconds = 0b0100,
+    WaitAdditional20Milliseconds = 0b0101,
+    WaitAdditional40Milliseconds = 0b0110,
+    WaitAdditional60Milliseconds = 0b0111,
+    WaitAdditional80Milliseconds = 0b1000,
+    WaitAdditional100Milliseconds = 0b1001,
+    WaitAdditional120Milliseconds = 0b1010,
+    WaitAdditional140Milliseconds = 0b1011,
+    WaitAdditional160Milliseconds = 0b1100,
+    WaitAdditional180Milliseconds = 0b1101,
+    WaitAdditional200Milliseconds = 0b1110,
+    WaitAdditional220Milliseconds = 0b1111,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum QspiHoldTime {
+    WaitFor500Microseconds = 0b00,
+    WaitFor1Millisecond = 0b01,
+    WaitFor3Milliseconds = 0b10,
+    WaitFor10Milliseconds = 0b11,
+}
+
+#[bitenum(u3)]
+pub enum QspiFrequency {
+    Freq75Mhz = 0b000,
+    Freq60Mhz = 0b001,
+    Freq50Mhz = 0b010,
+    Freq100Mhz = 0b011,
+}
+
+#[bitfield(u32)]
+pub struct LspiQflashCFG1 {
+    /// Any offset in memory mapped FlexSPI Flash area could be remapped to offset zero to support eXecute In Place (XIP) of image programmed at different offset.
+    /// This allows to build all update images with same RO base address, which are programmed at offset 0 or higher offset.
+    /// FLEXSPI_IMAGE_OFFSET field specifies the offset location of second image. FLEXSPI_REMAP_IMAGE_SIZE field specifies the size multiple to determine the size of area to be remapped.  
+    #[bits(17..=20, rw)]
+    pub qspi_remap_image_size: QspiRemapImageSize,
+    /// Any offset in memory mapped FlexSPI Flash area could be remapped to offset zero to support  eXecute In Place (XIP) of image programmed at different offset.
+    /// This allows to build all update images with same RO base address, which are programmed at offset 0 or higher offset.
+    ///
+    /// FlLEXSPI_IMAGE_OFFSET field specifies the offset location of the second image. FLEXSPI_REMAP_IMAGE_SIZE field specifies the size multiple to determine the size of area to be remapped.
+    /// If this field is left blank boot ROM will not enable FlexSPI remap feature.
+    ///
+    /// The physical flash offset is computed as below:
+    ///
+    /// physical offset = FLEXSPI_IMAGE_OFFSET * 256KByte;
+    #[bits(7..=16, rw)]
+    pub qspi_image_offset: u10,
+    /// Delay cell numbers for Flash read sampling via DQS (either internal loopback or external DQS).
+    /// The value provided here is loaded into the FLEXSPIn_DLLnCR.
+    #[bits(0..=6, rw)]
+    pub qspi_delay_cell_num: u7,
+}
+
+#[bitenum(u4, exhaustive = true)]
+pub enum QspiRemapImageSize {
+    /// Remap size = FLEXSPI_IMAGE_OFFSET * 256KByte;"   SIZE_OFFSET "Size of the remapped area (aka second half) is same as first half. It is determined by FLEXSPI_IMAGE_OFFSET Field.
+    Remap = 0b0000,
+    /// Size of remapped area is 1MByte.    
+    Size1mb = 0b0001,
+    /// Size of remapped area is 2MByte.    
+    Size2mb = 0b0010,
+    /// Size of remapped area is 3MByte.   
+    Size3mb = 0b0011,
+    /// Size of remapped area is 4MByte.
+    Size4mb = 0b0100,
+    /// Size of remapped area is 5MByte.    
+    Size5mb = 0b0101,
+    /// Size of remapped area is 6MByte.    
+    Size6mb = 0b0110,
+    /// Size of remapped area is 7MByte.    
+    Size7mb = 0b0111,
+    /// Size of remapped area is 8MByte.    
+    Size8mb = 0b1000,
+    /// Size of remapped area is 9MByte.    
+    Size9mb = 0b1001,
+    /// Size of remapped area is 10MByte.
+    Size10mb = 0b1010,
+    /// Size of remapped area is 11MByte.
+    Size11mb = 0b1011,
+    /// Size of remapped area is 12MByte.
+    Size12mb = 0b1100,
+    /// Size of remapped area is 256KByte.    
+    Size256kb = 0b1101,
+    /// Size of remapped area is 512KByte.   
+    Size512kb = 0b1110,
+    /// Size of remapped area is 768KByte.  
+    Size768kb = 0b1111,
+}
+
+#[bitfield(u32)]
+pub struct SecureBootCfg {
+    /// Block NXP signed SB3 loading.
+    #[bits(30..=31, rw)]
+    pub dis_nxp_fw: DisNxpFw,
+    /// Enable self-test for KDF block on power-up. Needed for FIPS certification. If this field is non-zero  run self-test and log result in SYSCON->ELS_AS_BOOT_LOG1[FIPS].
+    #[bits(26..=27, rw)]
+    pub fips_kdf_sten: SelfTestEnable,
+    /// Enable self-test for CMAC block on power-up. Needed for FIPS certification. If this field is non-zero  run self-test and log result in SYSCON->ELS_AS_BOOT_LOG1[FIPS].
+    #[bits(24..=25, rw)]
+    pub fips_cmac_sten: SelfTestEnable,
+    /// Enable self-test for DRBG block on power-up. Needed for FIPS certification. If this field is non-zero  run self-test and log result in SYSCON->ELS_AS_BOOT_LOG1[FIPS].
+    #[bits(22..=23, rw)]
+    pub fips_drbg_sten: SelfTestEnable,
+    /// Enable self-test for ECDSA block on power-up. Needed for FIPS certification. If this field is non-zero  run self-test and log result in SYSCON->ELS_AS_BOOT_LOG1[FIPS].
+    #[bits(20..=21, rw)]
+    pub fips_ecdsa_sten: SelfTestEnable,
+    /// Enable self-test for AES block on power-up. Needed for FIPS certification. If this field is non-zero  run self-test and log result in SYSCON->ELS_AS_BOOT_LOG1[FIPS].
+    #[bits(18..=19, rw)]
+    pub fips_aes_sten: SelfTestEnable,
+    /// Enable self-test for SHA2 block on power-up. Needed for FIPS certification. If this field is non-zero  run self-test and log result in SYSCON->ELS_AS_BOOT_LOG1[FIPS].
+    #[bits(16..=17, rw)]
+    pub fips_sha_sten: SelfTestEnable,
+    /// Protection of active image.
+    ///
+    /// This field defines protection of flash area occupied by the active image. Only applicable to internal flash.
+    #[bits(14..=15, rw)]
+    pub active_img_prot: ActiveImgProt,
+    /// Fast boot enabled. First boot after update local-CMAC using DUK-Auth key is created and used for sub-sequent boot authentication.
+    #[bits(12..=13, rw)]
+    pub fast_boot_en: InverseBigBool,
+    /// Enforce preset TZM data in image manifest.
+    #[bits(10..=11, rw)]
+    pub enf_tzm_preset: BigBool,
+    /// Enforce CNSA suite approved algorithms for secure boot, secure update and debug authentication.
+    #[bits(8..=9, rw)]
+    pub enf_cnsa: EnfCnsa,
+    /// Define the DICE csr and key generation type.
+    #[bits(6..=7, rw)]
+    pub dice_csr_key_type: DiceCsrKeyType,
+    /// Secure boot option for low-power wake from power-down & deep-powerdown.
+    /// For CFPA/CMPA do CRC check always.
+    #[bits(3..=4, rw)]
+    pub lp_sec_boot: LpSecBoot,
+    /// Secure boot enforcement.
+    ///
+    /// This field defines the minimum image verification procedure (CRC32, CMAC, ECDSA sign).
+    /// The Image type field in header indicates the type of verification data (checksum or signature) included in it.
+    ///
+    /// Plain < CRC32 < CMAC < ECDSA < ECDSA+MLDSA
+    #[bits(0..=1, rw)]
+    pub sec_boot_en: SecBootEn,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum DisNxpFw {
+    AllowNxpSignedSb3Fw1 = 0b00,
+    /// Same as [Self::AllowNxpSignedSb3Fw1]
+    AllowNxpSignedSb3Fw2 = 0b11,
+    DisableNxpSignedSb3Fw = 0b01,
+    AllowOnlyOemAndNxpSignedSb3Fw = 0b10,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum SelfTestEnable {
+    NotIncluded = 0b00,
+    OnFailureContinueToBoot = 0b01,
+    OnFailureEnterIspModeForRecovery = 0b10,
+    OnFailureLockTheDeviceToEnforcePowerCycle = 0b11,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum ActiveImgProt {
+    /// Protection is defined using the CFPA FLASH_ACL settings.
+    FlashAcl = 0b00,
+    /// Write protect active image area with sticky lock. GLBAC2 is used. FLASH_ACL settings are ignored.
+    GLBAC2 = 0b01,
+    /// Write protect active image area without sticky lock. GLBAC4 is used. FLASH_ACL settings are ignored.
+    GLBAC4 = 0b10,
+    /// XOM protect active image area with sticky lock. GLBAC6 is used. FLASH_ACL settings are ignored.
+    GLBAC6 = 0b11,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum EnfCnsa {
+    /// Use performance crypt algos (ECC P-256, SHA256 & AES 128).
+    Performance = 0b00,
+    /// Use CNSA 1.0 specified clasic crypto algorithims. (ECC P-384, SHA384 & AES256).
+    CNSA1 = 0b01,
+    /// Use CNSA 2.0 specified hybrid (PQC + clasic) crypto algorithims.(ECDSA P-384 + MLDSA-87, ML-KEM, SHA384 & AES256).
+    CNSA2 = 0b10,
+    /// Same as [Self::CNSA2]
+    CNSA2Dup = 0b11,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum DiceCsrKeyType {
+    /// Generate DICE ECC P-384 keys.
+    EccP384 = 0b00,
+    /// Same as [Self::EccP384]
+    EccP384Dup = 0b01,
+    /// Generate DICE SHA384 & MLDSA keys.
+    Sha384AndMLDSA = 0b10,
+    /// Same as [Self::Sha384AndMLDSA]
+    Sha384AndMLDSADup = 0b11,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum LpSecBoot {
+    /// Same as cold boot
+    Cold = 0b00,
+    /// CRC check for CFPA/CMPA & CRC32 check of active image
+    CheckForCfpaCmpaAndCrc32 = 0b01,
+    /// CRC check for CFPA/CMPA & jump to vector address specified in CFPA.
+    CheckForCfpaCmpaAndJump = 0b10,
+    /// CRC check for CFPA/CMPA & CMAC check of active image
+    CheckForCfpaCmpaAndCmac = 0b11,
+}
+
+#[bitenum(u2, exhaustive = true)]
+pub enum SecBootEn {
+    /// All Image types are allowed.
+    AllAllowed = 0b00,
+    /// Only CRC32 or cryptographically signed (CMAC or PKI - ECDSA/ MLDSA) images are allowed.
+    OnlyCrc32OrSigned = 0b01,
+    /// Only cryptographically Signed (CMAC or PKI - ECDSA/ MLDSA) images are allowed.
+    OnlySigned = 0b10,
+    /// Only PKI signed (ECDSA or MLDSA) images are allowed.
+    OnlyPki = 0b11,
+}
+
+#[bitfield(u32)]
+pub struct DiceX509SramBufLen {
+    #[bits(0..=15, rw)]
+    pub dice_ecdsa_cert_buf_size: u16,
+    #[bits(16..=31, rw)]
+    pub dice_mldsa_cert_buf_size: u16,
 }
 
 /// An array that stores the elements in reverse order, but is interacted with in normal order
