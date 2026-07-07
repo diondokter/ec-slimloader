@@ -3,7 +3,7 @@
 
 use core::ops::{Index, IndexMut};
 
-use arbitrary_int::{u10, u3, u4, u5, u7};
+use arbitrary_int::{u10, u24, u3, u4, u5, u7};
 use bitbybit::{bitenum, bitfield};
 
 #[repr(C)]
@@ -335,7 +335,7 @@ pub struct CMPA {
     boot_led_status: BootLedStatus,
     boot_timers: BootTimers,
     lspi_qflash_cfg0: LspiQflashCfg0,
-    lspi_qflash_cfg1: LspiQflashCFG1,
+    lspi_qflash_cfg1: LspiQflashCfg1,
     lspi_flash_cfg0: u32, // Reserved
     lspi_flash_cfg1: u32, // TODO
     isp_uart_cfg: u32,    // TODO
@@ -351,7 +351,10 @@ pub struct CMPA {
     vendor_usage: u32,    // TODO
     _reserved0: [u32; 1],
     secure_boot_cfg: SecureBootCfg,
-    ro_tk_usage: u32, // Not yet done
+    rotk_usage: RotkUsage,
+    /// Secondary boot loader (SBL) or First Mutable Code (FMC) image start address.
+    ///
+    /// When FMC_SBL_EN is set ROM checks for presence of valid image at this location. If not present then goes to recover boot path.
     sbl_start_addr: u32,
     err_log_addr: u32,
     /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
@@ -366,35 +369,9 @@ pub struct CMPA {
     /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
     /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage.
     pqc_rotkh: ReverseArray<u32, 12>,
-    quick_set_gpio_0: u32,
-    quick_clr_gpio_0: u32,
-    quick_set_gpio_1: u32,
-    quick_clr_gpio_1: u32,
-    quick_set_gpio_2: u32,
-    quick_clr_gpio_2: u32,
-    quick_set_gpio_3: u32,
-    quick_clr_gpio_3: u32,
-    quick_set_gpio_4: u32,
-    quick_clr_gpio_4: u32,
-    quick_set_gpio_5: u32,
-    quick_clr_gpio_5: u32,
+    quick_gpio: [QuickGpio; 6],
     _reserved1: [u32; 4],
-    iped0_start: u32,
-    iped0_end: u32,
-    iped1_start: u32,
-    iped1_end: u32,
-    iped2_start: u32,
-    iped2_end: u32,
-    iped3_start: u32,
-    iped3_end: u32,
-    iped4_start: u32,
-    iped4_end: u32,
-    iped5_start: u32,
-    iped5_end: u32,
-    iped6_start: u32,
-    iped6_end: u32,
-    iped7_start: u32,
-    iped7_end: u32,
+    iped: [Iped; 8],
     _reserved2: [u32; 19],
     dice_x509_sram_buf_len: DiceX509SramBufLen,
     dice_x509_ecdsa_sram_addr: u32,
@@ -412,6 +389,45 @@ pub struct CMPA {
 impl CMPA {
     pub const DEVCFG_ADDR: u32 = 0x0100_0200;
     pub const SCRATCH_ADDR: u32 = 0x0100_2200;
+    pub const ZERO: Self = Self {
+        boot_cfg0: BootCfg0::ZERO,
+        boot_cfg1: BootCfg1::ZERO,
+        boot_led_status: BootLedStatus::ZERO,
+        boot_timers: BootTimers::ZERO,
+        lspi_qflash_cfg0: LspiQflashCfg0::ZERO,
+        lspi_qflash_cfg1: LspiQflashCfg1::ZERO,
+        lspi_flash_cfg0: 0,
+        lspi_flash_cfg1: 0,
+        isp_uart_cfg: 0,
+        isp_i2c_cfg: 0,
+        isp_can_cfg: 0,
+        isp_spi_cfg0: 0,
+        isp_spi_cfg1: 0,
+        isp_usb_id: 0,
+        isp_usb_cfg: 0,
+        isp_misc_cfg: 0,
+        cc_socu_pin: 0,
+        cc_socu_dflt: 0,
+        vendor_usage: 0,
+        _reserved0: [0; _],
+        secure_boot_cfg: SecureBootCfg::ZERO,
+        rotk_usage: RotkUsage::ZERO,
+        sbl_start_addr: 0,
+        err_log_addr: 0,
+        rotkh: ReverseArray::new([0; _]),
+        cust_mk_sk_key_blob: [0; _],
+        pqc_rotkh: ReverseArray::new([0; _]),
+        quick_gpio: [QuickGpio::ZERO; _],
+        _reserved1: [0; _],
+        iped: [Iped::ZERO; _],
+        _reserved2: [0; _],
+        dice_x509_sram_buf_len: DiceX509SramBufLen::ZERO,
+        dice_x509_ecdsa_sram_addr: 0,
+        dice_x509_mldsa_sram_addr: 0,
+        dice_alias_key_sram_addr: 0,
+        mldsa_cert_temp_addr: 0,
+        mldsa_cert_temp_hash: ReverseArray::new([0; _]),
+    };
 }
 
 #[bitfield(u32)]
@@ -656,7 +672,7 @@ pub enum QspiFrequency {
 }
 
 #[bitfield(u32)]
-pub struct LspiQflashCFG1 {
+pub struct LspiQflashCfg1 {
     /// Any offset in memory mapped FlexSPI Flash area could be remapped to offset zero to support eXecute In Place (XIP) of image programmed at different offset.
     /// This allows to build all update images with same RO base address, which are programmed at offset 0 or higher offset.
     /// FLEXSPI_IMAGE_OFFSET field specifies the offset location of second image. FLEXSPI_REMAP_IMAGE_SIZE field specifies the size multiple to determine the size of area to be remapped.  
@@ -844,6 +860,84 @@ pub enum SecBootEn {
     OnlySigned = 0b10,
     /// Only PKI signed (ECDSA or MLDSA) images are allowed.
     OnlyPki = 0b11,
+}
+
+#[bitfield(u32)]
+pub struct RotkUsage {
+    /// Include NXP field programmed area (NFPA) containing in-field ROM patch in DICE computation.
+    #[bit(15, rw)]
+    pub dice_inc_nxp_field_cfg: bool,
+    /// Include data from CMPA page  in DICE computation.
+    #[bit(14, rw)]
+    pub dice_inc_cust_cfg: bool,
+    /// Include NXP area (IFR1) containing specific part configuration data defined during chip manufacturing process in DICE computation.
+    #[bit(13, rw)]
+    pub dice_inc_nxp_cfg: bool,
+    /// Skip DICE computation.
+    /// - 0 - Enable DICE
+    /// - 1 - Disable DICE
+    #[bit(12, rw)]
+    #[doc(alias = "SKIP_DICE")]
+    pub disable_dice: bool,
+    #[bits(0..=2, rw, stride = 3)]
+    pub rotk_usage: [RotkUsageVal; 4],
+}
+
+#[bitenum(u3, exhaustive = true)]
+pub enum RotkUsageVal {
+    /// Usable as debug CA, image CA, FW CA, image and FW key.
+    All = 0b000,
+    /// Usable as debug CA only.
+    DebugCaOnly = 0b001,
+    /// Usable as image (boot & FW) CA only.
+    ImageCaOnly = 0b010,
+    /// Usable as debug, boot & FW image CA.
+    DebugAndImage = 0b011,
+    /// Usable as image key & FW update key only.
+    KeyOnly = 0b100,
+    /// Usable as boot image key only.
+    BootImageKeyOnly = 0b101,
+    /// Usable as FW update image key only.
+    FwUpdateImageKeyOnly = 0b110,
+    /// Key slot is not used.
+    Unused = 0b111,
+}
+
+#[bitfield(u64)]
+pub struct QuickGpio {
+    /// Drive GPIO port pin high after reset.
+    ///
+    /// Each bit corresponds to the pin in the GPIO port. When set ROM drives the corresponding pin high as soon as possible. By default most pins come-up as tri-stated inputs.
+    /// This feature allows customer to specify active drive pins soon after reset instead of waiting till complete boot.
+    /// Note, if a pin is selected in both QUICK_SET_GPIO_x and QUICK_CLR_GPIO_x fields then pin will be set to high-level with quick transition to low.
+    #[bit(0, rw, stride = 1)]
+    pub set: [bool; 32],
+    /// Drive GPIO port pin low.
+    #[bit(32, rw, stride = 1)]
+    pub clear: [bool; 32],
+}
+
+#[bitfield(u64)]
+pub struct Iped {
+    /// Upper 24-bits of IPED region 0 start address. Lower 8 address bits are always 0.
+    #[bits(8..=31, rw)]
+    pub start_addr: u24,
+    /// Disable AHB bus error.
+    /// If GCM authentication fails generates bus error or not.
+    /// - 0 - Bus error enabled.
+    /// - 1 - Bus error disabled.
+    #[bit(1, rw)]
+    pub ahberr_dis: bool,
+    /// GCM mode enable.
+    /// - 0 -  Region is enabled in CTR mode.
+    /// - 1 - Region is enabled in GCM mode.
+    #[bit(0, rw)]
+    pub gcm_mode: bool,
+    /// Upper 24-bits of IPED region 0 end address. Lower 8 address bits are always 0.
+    #[bits(40..=63, rw)]
+    pub end_addr: u24,
+    #[bits(32..=33, rw)]
+    pub lock_en: BigBool,
 }
 
 #[bitfield(u32)]
