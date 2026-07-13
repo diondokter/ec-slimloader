@@ -170,7 +170,7 @@ pub struct CFPA {
     /// CMAC of hash (SHA384/256) of authenticated image manifest.
     pub sbl_img0_cmac_cache: ReverseArray<u32, 4>,
     /// CMAC of hash (SHA384/256) of authenticated image manifest.
-    pub img1_cmac_cache: ReverseArray<u32, 4>,
+    pub sbl_img1_cmac_cache: ReverseArray<u32, 4>,
     pub _reserved3: [u32; 4],
     /// Vector address when waking from power-down states when CMPA.LP_SEC_BOOT is set to 2b'10.
     pub lp_vector_addr: u32,
@@ -207,7 +207,7 @@ impl CFPA {
         flash_acl: [FlashAcl::ZERO; _],
         _reserved2: [0; _],
         sbl_img0_cmac_cache: ReverseArray::new([0; _]),
-        img1_cmac_cache: ReverseArray::new([0; _]),
+        sbl_img1_cmac_cache: ReverseArray::new([0; _]),
         _reserved3: [0; _],
         lp_vector_addr: 0,
         _reserved4: [0; _],
@@ -254,7 +254,7 @@ pub enum InvLifeCycleState {
     BrickedStated = 0xA5,
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct DbgRevokeVu {
     /// Debug certificate revocation counter.
     /// This monotonic counter field is used for revoking debug certificates.
@@ -264,7 +264,7 @@ pub struct DbgRevokeVu {
     pub debug_certificate_revocation_counter: u16,
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct RotkRevoke {
     /// This field is managed by ROM and user shouldn't set this field. ROM during update of IMGx_CMAC updates this field.
     #[bits(30..=31, r)]
@@ -312,7 +312,7 @@ pub enum RotkEn {
 /// - If current sector ACL value (GLBACn index) is greater than the new value, then it is permitted except if the new value is 4 or 5.
 ///   - 7 (___L) > 6 (__XL) > 3 (R__L) > 2 (R_XL) > 1 (RW_L) > 0 (RWX_)
 /// - If current sector ACL value is 0, 4, or 5 then any new value is permitted.
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct FlashAcl {
     #[bits(0..=2, rw, stride = 4)]
     pub acl_sec: [AclSec; 8],
@@ -442,7 +442,7 @@ impl CMPA {
     };
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct BootCfg0 {
     /// CMPA Header marker should be set to 0x5963. After this header is set, all non-zero values will take effect; leaving all settings at 0xff will cause undefined behavior. It is recommended to set all values to 0x00 before setting the CMPA header value.
     #[bits(16..=31, rw)]
@@ -456,7 +456,6 @@ pub struct BootCfg0 {
     /// Enable external flash(LSPI) as recovery boot media.
     #[bit(5, rw)]
     pub rec_lspi: bool,
-
     /// Enable external flash(FlexSPI) as recovery boot media.
     #[bit(4, rw)]
     pub rec_flexspi: bool,
@@ -508,7 +507,17 @@ pub enum InverseBigBool {
     False2 = 0b11,
 }
 
-#[bitfield(u32, debug)]
+/// All enabled variants mean the same to the boot rom
+#[bitenum(u2, exhaustive = true)]
+#[derive(Debug)]
+pub enum EntryEnabled {
+    Enabled = 0b00,
+    Disabled = 0b01,
+    Enabled1 = 0b10,
+    Enabled2 = 0b11,
+}
+
+#[bitfield(u32, debug, default = 0)]
 pub struct BootCfg1 {
     /// Customer extended CMPA size expressed as multiple of 32 bytes.
     ///
@@ -527,17 +536,17 @@ pub struct BootCfg1 {
     pub flash_remap_size: u5,
     /// Disable ISP mode entry on image authentication failure.
     #[bits(14..=15, rw)]
-    pub isp_ft_entry: BigBool,
+    pub isp_ft_entry: EntryEnabled,
     /// Disable ISP mode entry through ROM API call.
     /// ISP mode can be entered through ROM API invocation
     #[bits(12..=13, rw)]
-    pub isp_api_entry: BigBool,
+    pub isp_api_entry: EntryEnabled,
     /// Disable ISP mode entry through debug mailbox command.
     #[bits(10..=11, rw)]
-    pub isp_dm_entry: BigBool,
+    pub isp_dm_entry: EntryEnabled,
     /// Disable ISP mode entry  through pin assertion.
     #[bits(8..=9, rw)]
-    pub isp_pin_entry: BigBool,
+    pub isp_pin_entry: EntryEnabled,
     /// ISP interface enable
     #[bit(4, rw)]
     pub isp_usb_en: bool,
@@ -555,7 +564,7 @@ pub struct BootCfg1 {
     pub isp_uart_en: bool,
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct BootLedStatus {
     /// Assert on fatal errors during boot.
     ///
@@ -751,7 +760,7 @@ pub enum QspiRemapImageSize {
     Size768kb = 0b1111,
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct SecureBootCfg {
     /// Block NXP signed SB3 loading.
     #[bits(30..=31, rw)]
@@ -889,7 +898,7 @@ pub enum SecBootEn {
     OnlyPki = 0b11,
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct RotkUsage {
     /// Include NXP field programmed area (NFPA) containing in-field ROM patch in DICE computation.
     #[bit(15, rw)]
@@ -1013,7 +1022,15 @@ impl<T, const N: usize> IntoIterator for ReverseArray<T, N> {
     }
 }
 
-const DEFAULT_BYTES: [u8; 1024] = [
+impl<T, const N: usize> FromIterator<T> for ReverseArray<T, N> {
+    fn from_iter<U: IntoIterator<Item = T>>(iter: U) -> Self {
+        let mut iter = iter.into_iter();
+        Self::new(core::array::from_fn(|_| iter.next().unwrap()))
+    }
+}
+
+/// Bytes read for an IFR of an untouched device
+pub const DEFAULT_BYTES: [u8; 1024] = [
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x03, 0xfc, 0x35,
     0x96, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
@@ -1069,7 +1086,7 @@ const DEFAULT_BYTES: [u8; 1024] = [
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 ];
-const DEFAULT_IFR: IFR = unsafe { core::mem::transmute(DEFAULT_BYTES) };
+pub const DEFAULT_IFR: IFR = unsafe { core::mem::transmute(DEFAULT_BYTES) };
 
 #[cfg(test)]
 mod tests {
@@ -1079,5 +1096,162 @@ mod tests {
     fn print_default_ifr() {
         println!("{DEFAULT_IFR:#X?}");
     }
-}
 
+    #[test]
+    fn create_working_from_artifacts() {
+        const ECDSA_P384_PUB_SHA: &[u8; 48] =
+            include_bytes!("../../../bootloader-tool/artifacts-mcxa/ecdsa_p384_pub_sha.bin");
+        const MLDSA87_PUBLIC_SHA: &[u8; 48] =
+            include_bytes!("../../../bootloader-tool/artifacts-mcxa/mldsa87_public_sha.bin");
+
+        // When in doubt, set bits to zero. Everything set to one contains UB according to the docs
+        let ifr = IFR {
+            update: Update {
+                devcfg_upd_type: UpdateType::CmpaUpdated, // Update both CFPA + CMPA
+                _reserved: [0; _],
+            },
+            cfpa: CFPA {
+                header: Header::builder()
+                    .with_marker(0x9635)
+                    .with_cfpa_lc_state(LifeCycleState::DevelopState) // IMPORTANT! Keep at develop! Otherwise you risk bricking the device
+                    .with_inv_cfpa_lc_state(InvLifeCycleState::DevelopState)
+                    .build(),
+                cfpa_page_version: 1,
+                image_key_revoke: 0,
+                dbg_revoke_vu: DbgRevokeVu::builder()
+                    .with_debug_certificate_revocation_counter(u16::MAX)
+                    .build(),
+                ee0_fw_version: 0,
+                ee1_fw_version: 0,
+                ee2_fw_version: 0,
+                ee3_fw_version: 0,
+                fmc_sbl_fw_version: 0,
+                recovery_sb3_version: 0,
+                update_sb3_version: 0,
+                lp_fw_version: 0,
+                rotk_revoke: RotkRevoke::builder()
+                    .with_dice_upd_alias_cert(false)
+                    .with_dice_upd_alias_key(false)
+                    .with_rotk_en([RotkEn::Enabled1; _]) // All certs enabled
+                    .build(),
+                _reserved0: [0; _],
+                err_auth_fail_count: 0,
+                err_itrc_count: 0,
+                _reserved1: [0; _],
+                mctr_iped_ctx: [0; _],
+                mctr_cust_ctr: [0; _],
+                mflag_cust: [0; _],
+                flash_acl: [FlashAcl::builder().with_acl_sec([AclSec::Data; _]).build(); _],
+                _reserved2: [0; _],
+                sbl_img0_cmac_cache: ReverseArray::new([0; _]),
+                sbl_img1_cmac_cache: ReverseArray::new([0; _]),
+                _reserved3: [0; _],
+                lp_vector_addr: 0,
+                _reserved4: [0; _],
+                iped_gcm_aad_ctx: [0; _],
+                _reserved5: [0; _],
+            },
+            cmpa: CMPA {
+                boot_cfg0: BootCfg0::builder()
+                    .with_marker(0x5963)
+                    .with_boot_speed(BootSpeed::MdMode)
+                    .with_rec_boot_en(BigBool::False)
+                    .with_rec_lspi(false)
+                    .with_rec_flexspi(false)
+                    .with_eflash_dual_en(false)
+                    .with_eflash_booten(false)
+                    .with_iflash_dual_en(false)
+                    .with_iflash_booten(true)
+                    .build(),
+                boot_cfg1: BootCfg1::builder()
+                    .with_ext_cmpa_32b_size(16)
+                    .with_flash_remap_size(u5::new(0))
+                    .with_isp_ft_entry(EntryEnabled::Enabled)
+                    .with_isp_api_entry(EntryEnabled::Enabled)
+                    .with_isp_dm_entry(EntryEnabled::Enabled)
+                    .with_isp_pin_entry(EntryEnabled::Enabled)
+                    .with_isp_usb_en(true)
+                    .with_isp_i2c_en(true)
+                    .with_isp_can_en(true)
+                    .with_isp_spi_en(true)
+                    .with_isp_uart_en(true)
+                    .build(),
+                boot_led_status: BootLedStatus::builder()
+                    .with_boot_fail_led(Gpio::builder().with_port(u3::new(2)).with_pin(u5::new(14)).build()) // Red
+                    .with_isp_boot_led(Gpio::builder().with_port(u3::new(2)).with_pin(u5::new(22)).build()) // Green
+                    .with_rec_boot_led(Gpio::builder().with_port(u3::new(2)).with_pin(u5::new(23)).build()) // Blue
+                    .build(),
+                boot_timers: BootTimers::builder()
+                    .with_wdog_timeout_count(0)
+                    .with_powerdown_timeout_secs(0)
+                    .build(),
+                lspi_qflash_cfg0: LspiQflashCfg0::new_with_raw_value(0),
+                lspi_qflash_cfg1: LspiQflashCfg1::new_with_raw_value(0),
+                lspi_flash_cfg0: 0,
+                lspi_flash_cfg1: 0,
+                isp_uart_cfg: 0,
+                isp_i2c_cfg: 0,
+                isp_can_cfg: 0,
+                isp_spi_cfg0: 0,
+                isp_spi_cfg1: 0,
+                isp_usb_id: 0,
+                isp_usb_cfg: 0,
+                isp_misc_cfg: 0,
+                cc_socu_pin: 0,
+                cc_socu_dflt: 0,
+                vendor_usage: 0,
+                _reserved0: [0; _],
+                secure_boot_cfg: SecureBootCfg::builder()
+                    .with_dis_nxp_fw(DisNxpFw::AllowNxpSignedSb3Fw1)
+                    .with_fips_kdf_sten(SelfTestEnable::NotIncluded)
+                    .with_fips_cmac_sten(SelfTestEnable::NotIncluded)
+                    .with_fips_drbg_sten(SelfTestEnable::NotIncluded)
+                    .with_fips_ecdsa_sten(SelfTestEnable::NotIncluded)
+                    .with_fips_aes_sten(SelfTestEnable::NotIncluded)
+                    .with_fips_sha_sten(SelfTestEnable::NotIncluded)
+                    .with_active_img_prot(ActiveImgProt::FlashAcl)
+                    .with_fast_boot_en(InverseBigBool::True)
+                    .with_enf_tzm_preset(BigBool::False)
+                    .with_enf_cnsa(EnfCnsa::Performance)
+                    .with_dice_csr_key_type(DiceCsrKeyType::EccP384)
+                    .with_lp_sec_boot(LpSecBoot::Cold)
+                    .with_sec_boot_en(SecBootEn::AllAllowed)
+                    .build(),
+                rotk_usage: RotkUsage::builder()
+                    .with_dice_inc_nxp_cfg(false)
+                    .with_dice_inc_cust_cfg(false)
+                    .with_dice_inc_nxp_field_cfg(false)
+                    .with_disable_dice(true)
+                    .with_rotk_usage([RotkUsageVal::All; _])
+                    .build(),
+                sbl_start_addr: 0,
+                err_log_addr: 0x2005_0000,
+                rotkh: ECDSA_P384_PUB_SHA
+                    .as_chunks::<4>()
+                    .0
+                    .into_iter()
+                    .map(|c| u32::from_be_bytes(*c)) // TODO: Or should this be LE?
+                    .collect(),
+                cust_mk_sk_key_blob: [0; _],
+                pqc_rotkh: MLDSA87_PUBLIC_SHA
+                    .as_chunks::<4>()
+                    .0
+                    .into_iter()
+                    .map(|c| u32::from_be_bytes(*c)) // TODO: Or should this be LE?
+                    .collect(),
+                quick_gpio: [QuickGpio::new_with_raw_value(0); _],
+                _reserved1: [0; _],
+                iped: [Iped::new_with_raw_value(0); _],
+                _reserved2: [0; _],
+                dice_x509_sram_buf_len: DiceX509SramBufLen::new_with_raw_value(0),
+                dice_x509_ecdsa_sram_addr: 0,
+                dice_x509_mldsa_sram_addr: 0,
+                dice_alias_key_sram_addr: 0,
+                mldsa_cert_temp_addr: 0,
+                mldsa_cert_temp_hash: ReverseArray::new([0; _]),
+            },
+        };
+
+        std::fs::write("ifr.bin", unsafe { std::mem::transmute::<_, [u8; 1024]>(ifr) }).unwrap();
+    }
+}
