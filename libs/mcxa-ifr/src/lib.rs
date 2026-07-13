@@ -1,5 +1,4 @@
 //! Data layout for the IFR CFPA & CMPA
-#![cfg_attr(not(test), no_std)]
 
 use core::ops::{Index, IndexMut};
 
@@ -46,6 +45,7 @@ impl Update {
 
 #[bitenum(u32)]
 #[derive(Debug)]
+#[repr(u32)]
 pub enum UpdateType {
     CfpaUpdated = 0x55504446,
     CmpaUpdated = 0x5550444D,
@@ -342,60 +342,60 @@ pub enum AclSec {
 #[repr(C)]
 #[derive(Debug)]
 pub struct CMPA {
-    boot_cfg0: BootCfg0,
-    boot_cfg1: BootCfg1,
-    boot_led_status: BootLedStatus,
-    boot_timers: BootTimers,
-    lspi_qflash_cfg0: LspiQflashCfg0,
-    lspi_qflash_cfg1: LspiQflashCfg1,
-    lspi_flash_cfg0: u32, // Reserved
-    lspi_flash_cfg1: u32, // TODO
-    isp_uart_cfg: u32,    // TODO
-    isp_i2c_cfg: u32,     // TODO
-    isp_can_cfg: u32,     // TODO
-    isp_spi_cfg0: u32,    // TODO
-    isp_spi_cfg1: u32,    // TODO
-    isp_usb_id: u32,      // TODO
-    isp_usb_cfg: u32,     // TODO
-    isp_misc_cfg: u32,    // TODO
-    cc_socu_pin: u32,     // TODO
-    cc_socu_dflt: u32,    // TODO
-    vendor_usage: u32,    // TODO
-    _reserved0: [u32; 1],
-    secure_boot_cfg: SecureBootCfg,
-    rotk_usage: RotkUsage,
+    pub boot_cfg0: BootCfg0,
+    pub boot_cfg1: BootCfg1,
+    pub boot_led_status: BootLedStatus,
+    pub boot_timers: BootTimers,
+    pub lspi_qflash_cfg0: LspiQflashCfg0,
+    pub lspi_qflash_cfg1: LspiQflashCfg1,
+    pub lspi_flash_cfg0: u32, // Reserved
+    pub lspi_flash_cfg1: u32, // TODO
+    pub isp_uart_cfg: u32,    // TODO
+    pub isp_i2c_cfg: u32,     // TODO
+    pub isp_can_cfg: u32,     // TODO
+    pub isp_spi_cfg0: u32,    // TODO
+    pub isp_spi_cfg1: u32,    // TODO
+    pub isp_usb_id: u32,      // TODO
+    pub isp_usb_cfg: u32,     // TODO
+    pub isp_misc_cfg: u32,    // TODO
+    pub cc_socu_pin: u32,     // TODO
+    pub cc_socu_dflt: u32,    // TODO
+    pub vendor_usage: u32,    // TODO
+    pub _reserved0: [u32; 1],
+    pub secure_boot_cfg: SecureBootCfg,
+    pub rotk_usage: RotkUsage,
     /// Secondary boot loader (SBL) or First Mutable Code (FMC) image start address.
     ///
     /// When FMC_SBL_EN is set ROM checks for presence of valid image at this location. If not present then goes to recover boot path.
-    sbl_start_addr: u32,
-    err_log_addr: u32,
+    pub sbl_start_addr: u32,
+    pub err_log_addr: u32,
     /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
     /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage .
     ///
     /// For SHA256 the bytes padded with 4 zero bytes at the start.
-    rotkh: ReverseArray<u32, 12>,
+    pub rotkh: ReverseArray<u32, 12>,
     /// CUST_MK_SK is stored in form of RFC3394 blob and it is used by bootloader to decrypt SB3.1 encryption key during processing of SB file by bootloader.
     /// CUST_MK_SK is generated during device provisioning process by HSM_KEY_GEN (random key) or by HSM_STORE_KEY (user defined key) commands.
     /// To store this key into CMPA, SB_STORE_KEY command should be used.
-    cust_mk_sk_key_blob: [u32; 12],
+    pub cust_mk_sk_key_blob: [u32; 12],
     /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
     /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage.
-    pqc_rotkh: ReverseArray<u32, 12>,
-    quick_gpio: [QuickGpio; 6],
-    _reserved1: [u32; 4],
-    iped: [Iped; 8],
-    _reserved2: [u32; 19],
-    dice_x509_sram_buf_len: DiceX509SramBufLen,
-    dice_x509_ecdsa_sram_addr: u32,
+    pub pqc_rotkh: ReverseArray<u32, 12>,
+    pub quick_gpio: [QuickGpio; 6],
+    pub _reserved1: [u32; 4],
+    pub iped: [Iped; 8],
+    pub _reserved2: [u32; 19],
+    pub dice_x509_sram_buf_len: DiceX509SramBufLen,
+    pub dice_x509_ecdsa_sram_addr: u32,
     /// If set as zero, then use the 0x30002000 RAM address as the default.
-    dice_x509_mldsa_sram_addr: u32,
+    pub dice_x509_mldsa_sram_addr: u32,
     /// If set as zero, then use the 0x30019000 RAM address as the default.
-    dice_alias_key_sram_addr: u32,
+    pub dice_alias_key_sram_addr: u32,
     /// Certificate template structure for MLDSA alias key identity.
-    mldsa_cert_temp_addr: u32,
+    pub mldsa_cert_temp_addr: u32,
     /// Root of Trust Key Hash is SHA256 or SHA384 of RoTKpublic. Hash algorithm is selected based on RoTK EC type (secp256r1 -> SHA256 or secp384r1 -> SHA384).
     /// Same RoTKs and RoTKTH values are shared between debug authentication, SB3.1 firmware updates container and signed boot image based on CMPA.RoTKx_Usage .
-    mldsa_cert_temp_hash: ReverseArray<u32, 12>,
+    pub mldsa_cert_temp_hash: ReverseArray<u32, 12>,
 }
 
 impl CMPA {
@@ -1087,171 +1087,3 @@ pub const DEFAULT_BYTES: [u8; 1024] = [
     0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
 ];
 pub const DEFAULT_IFR: IFR = unsafe { core::mem::transmute(DEFAULT_BYTES) };
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn print_default_ifr() {
-        println!("{DEFAULT_IFR:#X?}");
-    }
-
-    #[test]
-    fn create_working_from_artifacts() {
-        const ECDSA_P384_PUB_SHA: &[u8; 48] =
-            include_bytes!("../../../bootloader-tool/artifacts-mcxa/ecdsa_p384_pub_sha.bin");
-        const MLDSA87_PUBLIC_SHA: &[u8; 48] =
-            include_bytes!("../../../bootloader-tool/artifacts-mcxa/mldsa87_public_sha.bin");
-
-        // When in doubt, set bits to zero. Everything set to one contains UB according to the docs
-        let ifr = IFR {
-            update: Update {
-                devcfg_upd_type: UpdateType::CmpaUpdated, // Update both CFPA + CMPA
-                _reserved: [0; _],
-            },
-            cfpa: CFPA {
-                header: Header::builder()
-                    .with_marker(0x9635)
-                    .with_cfpa_lc_state(LifeCycleState::DevelopState) // IMPORTANT! Keep at develop! Otherwise you risk bricking the device
-                    .with_inv_cfpa_lc_state(InvLifeCycleState::DevelopState)
-                    .build(),
-                cfpa_page_version: 1,
-                image_key_revoke: 0,
-                dbg_revoke_vu: DbgRevokeVu::builder()
-                    .with_debug_certificate_revocation_counter(u16::MAX)
-                    .build(),
-                ee0_fw_version: 0,
-                ee1_fw_version: 0,
-                ee2_fw_version: 0,
-                ee3_fw_version: 0,
-                fmc_sbl_fw_version: 0,
-                recovery_sb3_version: 0,
-                update_sb3_version: 0,
-                lp_fw_version: 0,
-                rotk_revoke: RotkRevoke::builder()
-                    .with_dice_upd_alias_cert(false)
-                    .with_dice_upd_alias_key(false)
-                    .with_rotk_en([RotkEn::Enabled1; _]) // All certs enabled
-                    .build(),
-                _reserved0: [0; _],
-                err_auth_fail_count: 0,
-                err_itrc_count: 0,
-                _reserved1: [0; _],
-                mctr_iped_ctx: [0; _],
-                mctr_cust_ctr: [0; _],
-                mflag_cust: [0; _],
-                flash_acl: [FlashAcl::builder().with_acl_sec([AclSec::Data; _]).build(); _],
-                _reserved2: [0; _],
-                sbl_img0_cmac_cache: ReverseArray::new([0; _]),
-                sbl_img1_cmac_cache: ReverseArray::new([0; _]),
-                _reserved3: [0; _],
-                lp_vector_addr: 0,
-                _reserved4: [0; _],
-                iped_gcm_aad_ctx: [0; _],
-                _reserved5: [0; _],
-            },
-            cmpa: CMPA {
-                boot_cfg0: BootCfg0::builder()
-                    .with_marker(0x5963)
-                    .with_boot_speed(BootSpeed::MdMode)
-                    .with_rec_boot_en(BigBool::False)
-                    .with_rec_lspi(false)
-                    .with_rec_flexspi(false)
-                    .with_eflash_dual_en(false)
-                    .with_eflash_booten(false)
-                    .with_iflash_dual_en(false)
-                    .with_iflash_booten(true)
-                    .build(),
-                boot_cfg1: BootCfg1::builder()
-                    .with_ext_cmpa_32b_size(16)
-                    .with_flash_remap_size(u5::new(0))
-                    .with_isp_ft_entry(EntryEnabled::Enabled)
-                    .with_isp_api_entry(EntryEnabled::Enabled)
-                    .with_isp_dm_entry(EntryEnabled::Enabled)
-                    .with_isp_pin_entry(EntryEnabled::Enabled)
-                    .with_isp_usb_en(true)
-                    .with_isp_i2c_en(true)
-                    .with_isp_can_en(true)
-                    .with_isp_spi_en(true)
-                    .with_isp_uart_en(true)
-                    .build(),
-                boot_led_status: BootLedStatus::builder()
-                    .with_boot_fail_led(Gpio::builder().with_port(u3::new(2)).with_pin(u5::new(14)).build()) // Red
-                    .with_isp_boot_led(Gpio::builder().with_port(u3::new(2)).with_pin(u5::new(22)).build()) // Green
-                    .with_rec_boot_led(Gpio::builder().with_port(u3::new(2)).with_pin(u5::new(23)).build()) // Blue
-                    .build(),
-                boot_timers: BootTimers::builder()
-                    .with_wdog_timeout_count(0)
-                    .with_powerdown_timeout_secs(0)
-                    .build(),
-                lspi_qflash_cfg0: LspiQflashCfg0::new_with_raw_value(0),
-                lspi_qflash_cfg1: LspiQflashCfg1::new_with_raw_value(0),
-                lspi_flash_cfg0: 0,
-                lspi_flash_cfg1: 0,
-                isp_uart_cfg: 0,
-                isp_i2c_cfg: 0,
-                isp_can_cfg: 0,
-                isp_spi_cfg0: 0,
-                isp_spi_cfg1: 0,
-                isp_usb_id: 0,
-                isp_usb_cfg: 0,
-                isp_misc_cfg: 0,
-                cc_socu_pin: 0,
-                cc_socu_dflt: 0,
-                vendor_usage: 0,
-                _reserved0: [0; _],
-                secure_boot_cfg: SecureBootCfg::builder()
-                    .with_dis_nxp_fw(DisNxpFw::AllowNxpSignedSb3Fw1)
-                    .with_fips_kdf_sten(SelfTestEnable::NotIncluded)
-                    .with_fips_cmac_sten(SelfTestEnable::NotIncluded)
-                    .with_fips_drbg_sten(SelfTestEnable::NotIncluded)
-                    .with_fips_ecdsa_sten(SelfTestEnable::NotIncluded)
-                    .with_fips_aes_sten(SelfTestEnable::NotIncluded)
-                    .with_fips_sha_sten(SelfTestEnable::NotIncluded)
-                    .with_active_img_prot(ActiveImgProt::FlashAcl)
-                    .with_fast_boot_en(InverseBigBool::True)
-                    .with_enf_tzm_preset(BigBool::False)
-                    .with_enf_cnsa(EnfCnsa::Performance)
-                    .with_dice_csr_key_type(DiceCsrKeyType::EccP384)
-                    .with_lp_sec_boot(LpSecBoot::Cold)
-                    .with_sec_boot_en(SecBootEn::AllAllowed)
-                    .build(),
-                rotk_usage: RotkUsage::builder()
-                    .with_dice_inc_nxp_cfg(false)
-                    .with_dice_inc_cust_cfg(false)
-                    .with_dice_inc_nxp_field_cfg(false)
-                    .with_disable_dice(true)
-                    .with_rotk_usage([RotkUsageVal::All; _])
-                    .build(),
-                sbl_start_addr: 0,
-                err_log_addr: 0x2005_0000,
-                rotkh: ECDSA_P384_PUB_SHA
-                    .as_chunks::<4>()
-                    .0
-                    .into_iter()
-                    .map(|c| u32::from_be_bytes(*c)) // TODO: Or should this be LE?
-                    .collect(),
-                cust_mk_sk_key_blob: [0; _],
-                pqc_rotkh: MLDSA87_PUBLIC_SHA
-                    .as_chunks::<4>()
-                    .0
-                    .into_iter()
-                    .map(|c| u32::from_be_bytes(*c)) // TODO: Or should this be LE?
-                    .collect(),
-                quick_gpio: [QuickGpio::new_with_raw_value(0); _],
-                _reserved1: [0; _],
-                iped: [Iped::new_with_raw_value(0); _],
-                _reserved2: [0; _],
-                dice_x509_sram_buf_len: DiceX509SramBufLen::new_with_raw_value(0),
-                dice_x509_ecdsa_sram_addr: 0,
-                dice_x509_mldsa_sram_addr: 0,
-                dice_alias_key_sram_addr: 0,
-                mldsa_cert_temp_addr: 0,
-                mldsa_cert_temp_hash: ReverseArray::new([0; _]),
-            },
-        };
-
-        std::fs::write("ifr.bin", unsafe { std::mem::transmute::<_, [u8; 1024]>(ifr) }).unwrap();
-    }
-}
