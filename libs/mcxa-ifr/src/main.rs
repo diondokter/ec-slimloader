@@ -1,13 +1,8 @@
-use std::fs;
+use std::{fs, process::{Command, Stdio}};
 
 use anyhow::Context;
 use arbitrary_int::{u3, u5};
 use mcxa_ifr::*;
-use probe_rs::config::Registry;
-use probe_rs::flashing::{download_file_with_options, erase, BinLoader, DownloadOptions, FlashProgress};
-use probe_rs::Permissions;
-
-const CUSTOM_MCXA_YAML: &str = include_str!("../MCXA.yaml");
 
 fn main() -> anyhow::Result<()> {
     println!("Generating IFR");
@@ -15,54 +10,26 @@ fn main() -> anyhow::Result<()> {
     let ifr_bytes = unsafe { std::mem::transmute::<IFR, [u8; 1024]>(ifr) };
     fs::write("ifr.bin", ifr_bytes).context("writing IFR to disk")?;
 
-    let mut chip_registry = Registry::new();
-    chip_registry
-        .add_target_family_from_yaml(CUSTOM_MCXA_YAML)
-        .context("adding custom YAML")?;
+    Command::new("blhost")
+        .args(["-u", "0x1fc9,0x002a"])
+        .args(["flash-erase-region", "0x01002000", "8192"])
+        .stdout(Stdio::inherit())
+        .output()
+        .context("running blhost to erase")?;
 
-    println!("Connecting to chip");
-    let mut session = probe_rs::Session::auto_attach_with_registry(
-        "MCXA577",
-        probe_rs::SessionConfig {
-            permissions: Permissions::new(),
-            speed: None,
-            protocol: None,
-        },
-        &chip_registry,
-    )
-    .context("auto attach")?;
+    Command::new("blhost")
+        .args(["-u", "0x1fc9,0x002a"])
+        .args(["write-memory", "0x01002000", "ifr.bin"])
+        .stdout(Stdio::inherit())
+        .output()
+        .context("running blhost to write")?;
 
-    println!("Erasing IFR");
-    erase(
-        &mut session,
-        &mut FlashProgress::empty(),
-        0x0100_2000,
-        0x0100_2000 + 8 * 1024,
-        false,
-    )
-    .context("erasing IFR")?;
-
-    println!("Downloading IFR");
-    download_file_with_options(
-        &mut session,
-        "ifr.bin",
-        BinLoader(probe_rs::flashing::BinOptions {
-            base_address: Some(0x0100_2000),
-            skip: 0,
-        }),
-        {
-            let mut options = DownloadOptions::default();
-            options.verify = true;
-            options.skip_erase = true;
-            options
-        },
-    )
-    .context("download ifr")?;
-
-    println!("Resetting chip");
-    session.core(0)?.reset().context("resetting core")?;
-
-    drop(session);
+    Command::new("blhost")
+        .args(["-u", "0x1fc9,0x002a"])
+        .args(["reset"])
+        .stdout(Stdio::inherit())
+        .output()
+        .context("running blhost to reset")?;
 
     Ok(())
 }

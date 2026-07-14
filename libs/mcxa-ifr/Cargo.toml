@@ -8,7 +8,6 @@ repository.workspace = true
 [dependencies]
 bitbybit = "2.0.0"
 arbitrary-int = "2.1.0"
-probe-rs = { git = "https://github.com/probe-rs/probe-rs.git", rev = "99b758f", features = ["builtin-formats"] }
 anyhow = "1.0.103"
 
 [lints]
