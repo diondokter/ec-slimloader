@@ -1,0 +1,21 @@
+# Copy this file to /etc/udev/rules.d/
+# If rules fail to reload automatically, you can refresh udev rules
+# with the command "udevadm control --reload"
+
+# This rules are based on the udev rules from the OpenOCD project, with unsupported probes removed.
+# See http://openocd.org/ for more details.
+#
+# This file is available under the GNU General Public License v2.0
+
+ACTION!="add|change", GOTO="blhost_rules_end"
+
+SUBSYSTEM=="gpio", MODE="0660", GROUP="plugdev", TAG+="uaccess"
+
+SUBSYSTEM!="usb|tty|hidraw", GOTO="blhost_rules_end"
+
+# Please keep this list sorted by VID:PID
+
+# MCXA577
+ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="002a", MODE="660", GROUP="plugdev", TAG+="uaccess"
+
+LABEL="blhost_rules_end"
