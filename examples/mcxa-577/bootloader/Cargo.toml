@@ -26,5 +26,6 @@ ec-slimloader = { path = "../../../libs/ec-slimloader", default-features = false
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", default-features = false, features = ["platform-cortex-m", "executor-thread"] }
 
 [profile.release]
-debug = true            # Full DWARF info for defmt/probe-rs decoding
-panic = "abort"      # Smaller binaries
+debug = true
+lto = true
+opt-level = "z"
