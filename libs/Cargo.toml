@@ -7,6 +7,7 @@ members = [
     "ec-slimloader-mcxa",
     "imxrt-rom",
     "mcxa-ifr",
+    "ec-slimloader-mcxa-split",
 ]
 
 [workspace.package]

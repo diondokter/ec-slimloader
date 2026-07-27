@@ -20,7 +20,7 @@ defmt = { version = "1.0", optional = true }
 defmt-or-log = { version = "0.2.3", optional = true }
 defmt-rtt = { version = "1.0", optional = true }
 
-ec-slimloader-mcxa = { path = "../../../libs/ec-slimloader-mcxa", default-features = false, features = ["internal-only", "mcxa5xx", "defmt"] }
+ec-slimloader-mcxa-split = { path = "../../../libs/ec-slimloader-mcxa-split" }
 ec-slimloader = { path = "../../../libs/ec-slimloader", default-features = false }
 
 embassy-executor = { git = "https://github.com/embassy-rs/embassy", default-features = false, features = ["platform-cortex-m", "executor-thread"] }

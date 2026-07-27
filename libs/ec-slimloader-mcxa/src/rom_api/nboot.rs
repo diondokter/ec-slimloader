@@ -107,21 +107,36 @@ pub union NbootMemCryptRegionConfig {
     pub ipedConfig: NbootIpedRegionConfig,
 }
 
+/// NBOOT type for the root of trust parameters
+///
+/// This type defines the NBOOT root of trust parameters
 #[repr(C)]
 pub struct NbootRotAuthParms {
+    /// Provided by caller based on NVM information in CFPA: ROTKH_REVOKE
     pub soc_rootKeyRevocation: [u32; 4],
+    /// Provided by caller based on NVM information in CFPA: IMAGE_KEY_REVOKE
     pub soc_imageKeyRevocation: u32,
+    /// Provided by caller based on NVM information in CMPA: ROTKH (hash of hashes)
     pub soc_rkh: [u32; 12],
-    pub soc_rkh_1: [u32; 12], // PQC_ROTKH (hash of hashes)
+    /// Provided by caller based on NVM information in CMPA: ROTKH (hash of hashes)
+    pub soc_rkh_1: [u32; 12],
+    /// unsigned int, must be 4
     pub soc_numberOfRootKeys: u32,
+    /// CMPA
     pub soc_rootKeyUsage: [u32; 4],
+    /// static selection between ECDSA P-256 or ECDSA P-384 based root keys
     pub soc_rootKeyTypeAndLength: u32,
+    /// trusted information originated from OTP fuses
     pub soc_lifecycle: u32,
 }
 
+/// Data structure holding input arguments to POR secure boot (authentication) algorithm.
+/// Shall be read from SoC trusted NVM or SoC fuses.
 #[repr(C)]
 pub struct NbootImgAuthParms {
+    /// trusted information originated from CFPA and CMPA
     pub soc_RoTNVM: NbootRotAuthParms,
+    /// Provided by caller based on NVM information in CFPA: Secure_FW_Version
     pub soc_trustedFirmwareVersion: u32,
 }
 
