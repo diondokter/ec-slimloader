@@ -23,6 +23,13 @@ async fn main(_spawner: Spawner) -> ! {
 
     ec_slimloader::start::<ec_slimloader_mcxa_split::McxaBoard, JOURNAL_BUFFER_SIZE>(
         ec_slimloader_mcxa_split::McxaConfig {
+            slot_0a: (0x00010000..0x00100000).into(),
+            slot_0b: (0x80010000..0x80100000).into(),
+            slot_1a: (0x00110000..0x00200000).into(),
+            slot_1b: (0x80110000..0x80200000).into(),
+            journal: (0x00100000..0x00110000).into(),
+            scratch_space: (0x80000000..0x80010000).into(),
+            swap_log: (0x80100000..0x80110000).into(),
             external_flash_config: FLASH_CONFIG,
         },
     )

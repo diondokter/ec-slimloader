@@ -26,7 +26,8 @@ embedded-storage-async = "0.4.1"
 embassy-futures = "0.1"
 embassy-time = "0.5"
 embassy-imxrt = { git = "https://github.com/OpenDevicePartnership/embassy-imxrt.git", default-features = false, features = ["mimxrt685s"] }
-embassy-mcxa = { git = "https://github.com/embassy-rs/embassy", rev = "aca5a5466cf4d78708b3bdd56b62b8a1cf78a3a3", default-features = false }
+# https://github.com/embassy-rs/embassy/pull/6644
+embassy-mcxa = { git = "https://github.com/embassy-rs/embassy", rev = "4aa5e2cb44d502bf5ff1580e43b557ac6f1a2e1a", default-features = false }
 embassy-sync = "0.8.0"
 log = "0.4"
 

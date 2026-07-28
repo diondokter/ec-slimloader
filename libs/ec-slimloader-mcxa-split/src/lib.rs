@@ -2,6 +2,7 @@
 
 use ec_slimloader::{Board, BootStatePolicy};
 use ec_slimloader_state::flash::FlashJournal;
+use embassy_embedded_hal::{adapter::BlockingAsync, flash::partition::Partition};
 use embassy_mcxa::{
     bind_interrupts,
     flexspi::{self, Async, ClockConfig, FlashConfig, IoError},
@@ -13,12 +14,15 @@ use embedded_storage_async::nor_flash::{NorFlash, NorFlashErrorKind};
 pub use embassy_mcxa;
 use static_cell::StaticCell;
 
+const INTERNAL_FLASH_RANGE: core::ops::Range<u32> = 0x0000_0000..0x0020_0000;
+const EXTERNAL_FLASH_RANGE: core::ops::Range<u32> = 0x8000_0000..0x9000_0000;
+
 bind_interrupts!(struct Irqs {
     FLEXSPI0 => flexspi::InterruptHandler<peripherals::FLEXSPI0>;
 });
 
 pub struct McxaBoard {
-    flash_journal: FlashJournal<ExternalFlash<'static>>,
+    flash_journal: FlashJournal<Partition<'static, NoopRawMutex, ExternalFlash>>,
 }
 
 impl Board for McxaBoard {
@@ -27,8 +31,10 @@ impl Board for McxaBoard {
     async fn init<const JOURNAL_BUFFER_SIZE: usize>(config: Self::Config) -> Self {
         let p = embassy_mcxa::init(Default::default());
 
-        static EXTERNAL_FLASH: StaticCell<Mutex<NoopRawMutex, flexspi::NorFlash<'static, Async>>> = StaticCell::new();
-        let external_flash = EXTERNAL_FLASH.init(Mutex::new(flexspi::NorFlash::new(
+        config.check();
+
+        static EXTERNAL_FLASH: StaticCell<Mutex<NoopRawMutex, ExternalFlash>> = StaticCell::new();
+        let external_flash = EXTERNAL_FLASH.init(Mutex::new(ExternalFlash(flexspi::NorFlash::new(
             flexspi::Flexspi::new_async(
                 p.FLEXSPI0,
                 p.P3_0,
@@ -43,11 +49,53 @@ impl Board for McxaBoard {
                 config.external_flash_config,
             )
             .unwrap(),
+        ))));
+
+        static INTERNAL_FLASH: StaticCell<Mutex<NoopRawMutex, BlockingAsync<embassy_mcxa::flash::Flash>>> =
+            StaticCell::new();
+        let internal_flash = INTERNAL_FLASH.init(Mutex::new(BlockingAsync::new(
+            embassy_mcxa::flash::Flash::new().unwrap(),
         )));
 
-        let external_flash = ExternalFlash(external_flash);
+        let slot_0a_partition = Partition::new(
+            internal_flash,
+            config.slot_0a.start,
+            config.slot_0a.end - config.slot_0a.start,
+        );
+        let slot_0b_partition = Partition::new(
+            external_flash,
+            config.slot_0b.start - EXTERNAL_FLASH_RANGE.start,
+            config.slot_0b.end - config.slot_0b.start,
+        );
+        let slot_1a_partition = Partition::new(
+            internal_flash,
+            config.slot_1a.start,
+            config.slot_1a.end - config.slot_1a.start,
+        );
+        let slot_1b_partition = Partition::new(
+            external_flash,
+            config.slot_1b.start - EXTERNAL_FLASH_RANGE.start,
+            config.slot_1b.end - config.slot_1b.start,
+        );
+        let journal_partition = Partition::new(
+            external_flash,
+            config.journal.start - EXTERNAL_FLASH_RANGE.start,
+            config.journal.end - config.journal.start,
+        );
+        let scratch_partition = Partition::new(
+            external_flash,
+            config.scratch_space.start - EXTERNAL_FLASH_RANGE.start,
+            config.scratch_space.end - config.scratch_space.start,
+        );
+        let swap_partition = Partition::new(
+            external_flash,
+            config.swap_log.start - EXTERNAL_FLASH_RANGE.start,
+            config.swap_log.end - config.swap_log.start,
+        );
 
-        let flash_journal = FlashJournal::new::<JOURNAL_BUFFER_SIZE>(external_flash).await.unwrap();
+        let flash_journal = FlashJournal::new::<JOURNAL_BUFFER_SIZE>(journal_partition)
+            .await
+            .unwrap();
 
         Self { flash_journal }
     }
@@ -60,6 +108,10 @@ impl Board for McxaBoard {
         &mut self,
         slot: &ec_slimloader_state::state::Slot,
     ) -> ec_slimloader::BootError {
+        if u8::from(*slot) > 1 {
+            return ec_slimloader::BootError::SlotUnknown;
+        }
+
         todo!()
     }
 
@@ -75,19 +127,88 @@ impl Board for McxaBoard {
 }
 
 pub struct McxaConfig {
-    pub internal_slot_a: core::range::Range<u32>,
-    pub internal_slot_b: core::range::Range<u32>,
-    pub external_slot_a: core::range::Range<u32>,
-    pub external_slot_b: core::range::Range<u32>,
-    pub external_journal: core::range::Range<u32>,
+    /// Must be in *internal* flash
+    pub slot_0a: core::range::Range<u32>,
+    /// Must be in *external* flash
+    pub slot_0b: core::range::Range<u32>,
+    /// Must be in *internal* flash
+    pub slot_1a: core::range::Range<u32>,
+    /// Must be in *external* flash
+    pub slot_1b: core::range::Range<u32>,
+    /// Must be in *external* flash
+    pub journal: core::range::Range<u32>,
+    /// Must be in *external* flash
+    pub scratch_space: core::range::Range<u32>,
+    /// Must be in *external* flash
+    pub swap_log: core::range::Range<u32>,
 
     pub external_flash_config: FlashConfig,
 }
 
 impl BootStatePolicy for McxaConfig {}
 
-#[derive(Clone)]
-struct ExternalFlash<'a>(&'a Mutex<NoopRawMutex, flexspi::NorFlash<'static, Async>>);
+impl McxaConfig {
+    fn check(&self) {
+        assert!(
+            INTERNAL_FLASH_RANGE.contains(&self.slot_0a.start),
+            "slot_0a.start not in INTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            INTERNAL_FLASH_RANGE.contains(&(self.slot_0a.end - 1)),
+            "slot_0a.end not in INTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&self.slot_0b.start),
+            "slot_0b.start not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&(self.slot_0b.end - 1)),
+            "slot_0b.end not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            INTERNAL_FLASH_RANGE.contains(&self.slot_1a.start),
+            "slot_1a.start not in INTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            INTERNAL_FLASH_RANGE.contains(&(self.slot_1a.end - 1)),
+            "slot_1a.end not in INTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&self.slot_1b.start),
+            "slot_1b.start not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&(self.slot_1b.end - 1)),
+            "slot_1b.end not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&self.journal.start),
+            "journal.start not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&(self.journal.end - 1)),
+            "journal.end not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&self.scratch_space.start),
+            "scratch_space.start not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&(self.scratch_space.end - 1)),
+            "scratch_space.end not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&self.swap_log.start),
+            "swap_log.start not in EXTERNAL_FLASH_RANGE"
+        );
+        assert!(
+            EXTERNAL_FLASH_RANGE.contains(&(self.swap_log.end - 1)),
+            "swap_log.end not in EXTERNAL_FLASH_RANGE"
+        );
+    }
+}
+
+struct ExternalFlash(flexspi::NorFlash<'static, Async>);
 
 #[derive(Debug)]
 struct ExternalFlashError(IoError);
@@ -111,15 +232,15 @@ impl embedded_storage_async::nor_flash::NorFlashError for ExternalFlashError {
     }
 }
 
-impl embedded_storage_async::nor_flash::ErrorType for ExternalFlash<'_> {
+impl embedded_storage_async::nor_flash::ErrorType for ExternalFlash {
     type Error = ExternalFlashError;
 }
 
-impl embedded_storage_async::nor_flash::ReadNorFlash for ExternalFlash<'_> {
+impl embedded_storage_async::nor_flash::ReadNorFlash for ExternalFlash {
     const READ_SIZE: usize = 1;
 
     async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        self.0.lock().await.read_async(offset, bytes).await?;
+        self.0.read_async(offset, bytes).await?;
         Ok(())
     }
 
@@ -129,7 +250,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for ExternalFlash<'_> {
     }
 }
 
-impl embedded_storage_async::nor_flash::NorFlash for ExternalFlash<'_> {
+impl embedded_storage_async::nor_flash::NorFlash for ExternalFlash {
     const WRITE_SIZE: usize = 1;
     const ERASE_SIZE: usize = 4096; // TODO: expose through some config
 
@@ -138,14 +259,14 @@ impl embedded_storage_async::nor_flash::NorFlash for ExternalFlash<'_> {
             .step_by(Self::ERASE_SIZE)
             .map(|addr| addr / Self::ERASE_SIZE as u32)
         {
-            self.0.lock().await.erase_sector_async(sector).await?;
+            self.0.erase_sector_async(sector).await?;
         }
 
         Ok(())
     }
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        self.0.lock().await.page_program_async(offset, bytes).await?;
+        self.0.page_program_async(offset, bytes).await?;
         Ok(())
     }
 }

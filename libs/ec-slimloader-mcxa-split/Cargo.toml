@@ -9,7 +9,8 @@ repository.workspace = true
 embedded-storage-async.workspace = true
 cortex-m = "0.7"
 embassy-mcxa = { workspace = true, features = ["rt", "mcxa5xx", "unstable-pac"] }
-embassy-sync = { workspace = true }
+embassy-sync = "0.8.0"
+embassy-embedded-hal = "0.6.0"
 static_cell = "2.1.1"
 
 ec-slimloader = { path = "../ec-slimloader", default-features = false, features = ["defmt"] }
