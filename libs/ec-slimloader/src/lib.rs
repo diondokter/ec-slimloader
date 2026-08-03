@@ -37,7 +37,10 @@ pub trait Board {
     ///
     /// Does not return if the boot is successful.
     /// Yields [BootError] if at any stage the boot is aborted.
-    async fn check_and_boot<const JOURNAL_BUFFER_SIZE: usize>(&mut self, slot: &Slot) -> BootError;
+    async fn check_and_boot<const JOURNAL_BUFFER_SIZE: usize>(
+        &mut self,
+        slot: &Slot,
+    ) -> Result<core::convert::Infallible, BootError>;
 
     /// Give up booting into an application.
     ///
@@ -152,7 +155,7 @@ pub async fn start<B: Board, const JOURNAL_BUFFER_SIZE: usize>(config: B::Config
     };
 
     info!("Attempting to boot {:?} in {:?}", intent, slot);
-    let error = board.check_and_boot::<JOURNAL_BUFFER_SIZE>(&slot).await; // If this function returns, it implies that the boot has failed.
+    let Err(error) = board.check_and_boot::<JOURNAL_BUFFER_SIZE>(&slot).await; // If this function returns, it implies that the boot has failed.
     warn!("Failed to boot {:?} in {:?} because {:?}", intent, slot, error);
 
     // Handle SlotRetryRequired differently - operation succeeded, just restart

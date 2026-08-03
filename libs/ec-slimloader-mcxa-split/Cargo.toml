@@ -7,6 +7,8 @@ repository.workspace = true
 
 [dependencies]
 embedded-storage-async.workspace = true
+defmt-or-log.workspace = true
+
 cortex-m = "0.7"
 embassy-mcxa = { workspace = true, features = ["rt", "mcxa5xx", "unstable-pac"] }
 embassy-sync = "0.8.0"
@@ -15,6 +17,11 @@ static_cell = "2.1.1"
 
 ec-slimloader = { path = "../ec-slimloader", default-features = false, features = ["defmt"] }
 ec-slimloader-state = { path = "../ec-slimloader-state", default-features = false }
+defmt = { workspace = true, optional = true }
+
+[features]
+defmt = ["dep:defmt"]
+log = []
 
 [lints]
 workspace = true

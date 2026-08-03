@@ -124,9 +124,12 @@ impl<C: ImxrtConfig + BootStatePolicy> Board for Imxrt<C> {
         &mut self.journal
     }
 
-    async fn check_and_boot<const JOURNAL_BUFFER_SIZE: usize>(&mut self, slot: &Slot) -> BootError {
+    async fn check_and_boot<const JOURNAL_BUFFER_SIZE: usize>(
+        &mut self,
+        slot: &Slot,
+    ) -> Result<core::convert::Infallible, BootError> {
         let Some(slot_partition) = self.slots.get_mut(u8::from(*slot) as usize) else {
-            return BootError::SlotUnknown;
+            return Err(BootError::SlotUnknown);
         };
 
         // Copy the image to RAM from flash, and ensure that everything from flash is no longer available.
@@ -135,39 +138,39 @@ impl<C: ImxrtConfig + BootStatePolicy> Board for Imxrt<C> {
 
             // Check if the image_len fits within the slot.
             if slot_size >= C::SLOT_SIZE_RANGE.end {
-                return BootError::TooLarge;
+                return Err(BootError::TooLarge);
             }
 
             // Verify IVT fields.
             let Ok(ivt) = mbi::Ivt::read(slot_partition).await else {
-                return BootError::IO;
+                return Err(BootError::IO);
             };
 
             // Note: skboot_authenticate only supports checking XIP_SIGNED, even though we are loading it to RAM here.
             if ivt.image_type != IMAGE_TYPE_TZ_XIP_SIGNED {
-                return BootError::Markers;
+                return Err(BootError::Markers);
             }
             if ivt.image_len > slot_size {
-                return BootError::TooLarge;
+                return Err(BootError::TooLarge);
             }
             if ivt.image_len < C::SLOT_SIZE_RANGE.start {
-                return BootError::TooSmall;
+                return Err(BootError::TooSmall);
             }
 
             // Check if the target_ptr is within the allowed range.
             // In MBI this is called the 'load_addr', which is located in 0x34 of IVT.
             let Some(image_target_end_ptr) = ivt.target_end_ptr() else {
-                return BootError::TooLarge;
+                return Err(BootError::TooLarge);
             };
 
             if !C::LOAD_RANGE.contains(&ivt.target_ptr) || !C::LOAD_RANGE.contains(&image_target_end_ptr) {
-                return BootError::MemoryRegion;
+                return Err(BootError::MemoryRegion);
             }
 
             info!("Starting copy");
             let target_slice = unsafe { core::slice::from_raw_parts_mut(ivt.target_ptr as *mut u8, ivt.image_len) };
             if let Err(_e) = slot_partition.read(0, target_slice).await {
-                return BootError::IO;
+                return Err(BootError::IO);
             }
 
             // Invalidate icache as we are writing to Code RAM, which is cached.
@@ -178,11 +181,11 @@ impl<C: ImxrtConfig + BootStatePolicy> Board for Imxrt<C> {
             info!("Copy done");
 
             let Ok(ram_ivt) = mbi::Ivt::read_from_slice(target_slice) else {
-                return BootError::TooSmall;
+                return Err(BootError::TooSmall);
             };
 
             if ivt != ram_ivt {
-                return BootError::ChangeAfterRead;
+                return Err(BootError::ChangeAfterRead);
             }
 
             ram_ivt
@@ -190,7 +193,7 @@ impl<C: ImxrtConfig + BootStatePolicy> Board for Imxrt<C> {
 
         if let Err(e) = self.check_image(&ram_ivt) {
             error!("Failed to boot image @ {}", slot);
-            return e;
+            return Err(e);
         }
 
         info!("Booting into application @ {:?}...", ram_ivt.target_ptr);

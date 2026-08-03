@@ -1,35 +1,32 @@
 #![no_std]
 #![no_main]
 
-#[cfg(any(feature = "defmt", feature = "log"))]
-use defmt_or_log::info;
-#[cfg(feature = "defmt")]
+use defmt::info;
 use defmt_rtt as _;
 use ec_slimloader_mcxa_split::embassy_mcxa::flexspi::lookup::opcodes::sdr::{CMD, DUMMY, MODE8, RADDR, READ, WRITE};
 use ec_slimloader_mcxa_split::embassy_mcxa::flexspi::lookup::{Command, Instr, LookupTable, Pads, SequenceBuilder};
 use ec_slimloader_mcxa_split::embassy_mcxa::flexspi::{DeviceCommand, FlashConfig};
+use ec_slimloader_mcxa_split::MemoryRanges;
 use embassy_executor::Spawner;
 use panic_halt as _;
 
 const JOURNAL_BUFFER_SIZE: usize = 4096;
 
-#[cfg(feature = "defmt")]
 defmt::timestamp!("{=u32}", 0);
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) -> ! {
-    #[cfg(any(feature = "defmt", feature = "log"))]
     info!("Starting MCXA bootloader");
 
     ec_slimloader::start::<ec_slimloader_mcxa_split::McxaBoard, JOURNAL_BUFFER_SIZE>(
         ec_slimloader_mcxa_split::McxaConfig {
-            slot_0a: (0x00010000..0x00100000).into(),
-            slot_0b: (0x80010000..0x80100000).into(),
-            slot_1a: (0x00110000..0x00200000).into(),
-            slot_1b: (0x80110000..0x80200000).into(),
-            journal: (0x00100000..0x00110000).into(),
-            scratch_space: (0x80000000..0x80010000).into(),
-            swap_log: (0x80100000..0x80110000).into(),
+            memory: MemoryRanges {
+                slot_0a: (0x00010000..0x00100000).into(),
+                slot_0b: (0x80010000..0x80100000).into(),
+                slot_1a: (0x00110000..0x00200000).into(),
+                slot_1b: (0x80110000..0x80200000).into(),
+                journal: (0x00100000..0x00110000).into(),
+            },
             external_flash_config: FLASH_CONFIG,
         },
     )

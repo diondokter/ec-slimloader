@@ -16,6 +16,8 @@ pub mod memory;
 pub mod rom_api;
 pub mod verification;
 
+#[cfg(feature = "internal-only")]
+use ec_slimloader::BootError;
 use ec_slimloader::{Board, BootStatePolicy};
 use ec_slimloader_state::flash::FlashJournal;
 use ec_slimloader_state::state::{Slot, State, Status};
@@ -149,30 +151,33 @@ impl Board for McxaBoard {
     }
 
     #[cfg(feature = "internal-only")]
-    async fn check_and_boot<const JOURNAL_BUFFER_SIZE: usize>(&mut self, slot: &Slot) -> ec_slimloader::BootError {
+    async fn check_and_boot<const JOURNAL_BUFFER_SIZE: usize>(
+        &mut self,
+        slot: &Slot,
+    ) -> Result<core::convert::Infallible, BootError> {
         let slot_i: u8 = (*slot).into();
         let (base_addr, slot_size) = match slot_i {
             0 => (memory::SLOT_A_START, memory::SLOT_A_SIZE),
-            _ => return ec_slimloader::BootError::SlotUnknown,
+            _ => return Err(ec_slimloader::BootError::SlotUnknown),
         };
 
         let base = base_addr as *const u8;
         let image_header = match unsafe { header::ImageHeader::from_ptr(base, slot_size) } {
             Ok(header) => header,
-            Err(_) => return ec_slimloader::BootError::Markers,
+            Err(_) => return Err(ec_slimloader::BootError::Markers),
         };
 
         let image_len = image_header.image_length();
         let cert_offset = image_header.cert_block_offset();
         if image_len < 0x40 || image_len > slot_size || (cert_offset & 0x3) != 0 || cert_offset >= image_len {
-            return ec_slimloader::BootError::Markers;
+            return Err(ec_slimloader::BootError::Markers);
         }
 
         match unsafe { verification::verify_authenticity(self.sgi.reborrow(), base) } {
             Ok(()) => unsafe {
                 jump::jump_to_image(base_addr);
             },
-            Err(error) => error,
+            Err(error) => Err(error),
         }
     }
 
