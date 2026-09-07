@@ -27,7 +27,6 @@ log = ["dep:log", "defmt-or-log/log", "ec-slimloader/log"]
 certificate-logging = []
 verification-logging = []
 flexspi-selftest = []
-mcxa2xx = ["embassy-mcxa/mcxa2xx"]
 mcxa5xx = ["embassy-mcxa/mcxa5xx"]
 # Use this when targeting the FRDM-MCXA577 EVK (flash on FlexSPI Port A).
 # Without this flag the driver targets Port B (custom board wiring for end target HW).

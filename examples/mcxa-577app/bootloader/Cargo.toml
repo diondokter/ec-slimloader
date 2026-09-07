@@ -2,6 +2,7 @@
 name = "mcxa-577app-bootloader"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [features]
 default = ["defmt", "certificate-logging", "verification-logging", "mcxa"]
