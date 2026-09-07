@@ -23,7 +23,6 @@ ec-slimloader-mcxa = { path = "../ec-slimloader-mcxa", default-features = false 
 
 
 [features]
-default = ["mcxa5xx", "defmt"]
 defmt = ["dep:defmt", "defmt-or-log/defmt", "ec-slimloader-mcxa/defmt", "embassy-mcxa/defmt"]
 log = ["dep:log", "defmt-or-log/log", "ec-slimloader-mcxa/log"]
 mcxa2xx = ["embassy-mcxa/mcxa2xx", "ec-slimloader-mcxa/mcxa2xx"]
