@@ -21,7 +21,7 @@ embassy-mcxa = { workspace = true, features = ["rt", "unstable-pac"] }
 embedded-storage-async = { workspace = true }
 
 [features]
-default = ["mcxa5xx", "verification-logging", "certificate-logging"]
+default = ["mcxa5xx", "verification-logging", "certificate-logging", "defmt"]
 defmt = ["dep:defmt", "defmt-or-log/defmt", "ec-slimloader/defmt"]
 log = ["dep:log", "defmt-or-log/log", "ec-slimloader/log"]
 certificate-logging = []
