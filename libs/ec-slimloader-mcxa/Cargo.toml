@@ -6,7 +6,6 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-device-driver.workspace = true
 defmt = { workspace = true, optional = true }
 defmt-or-log = { workspace = true }
 log = { workspace = true, optional = true }
@@ -18,7 +17,6 @@ partition-manager = { workspace = true, features = ["esa"] }
 partition-manager-macros = { workspace = true }
 static_cell = { workspace = true }
 embassy-sync = { workspace = true }
-embassy-time = { workspace = true }
 embassy-mcxa = { workspace = true, features = ["rt", "unstable-pac"] }
 embedded-storage-async = { workspace = true }
 

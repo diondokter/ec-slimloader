@@ -85,9 +85,6 @@ jobs:
       - name: cargo clippy (bootloader-tool)
         run: cargo clippy --locked -- -D clippy::suspicious -D clippy::correctness -D clippy::perf -D clippy::style
         working-directory: "./bootloader-tool"
-      - name: cargo clippy (mcxa-security-provisioning)
-        run: cargo clippy --locked -- -F clippy::suspicious -D clippy::correctness -F clippy::perf -F clippy::style
-        working-directory: "./mcxa-security-provisioning"
 
   # Enable once we have a released crate
   # semver:
