@@ -15,42 +15,6 @@ use crate::lifecycle::{
     low_power_authentication_enforced, secure_boot_state, SecureBootState,
 };
 
-macro_rules! verify_info {
-    ($($arg:tt)*) => {
-        #[cfg(feature = "verification-logging")]
-        {
-            defmt_or_log::info!($($arg)*);
-        }
-    };
-}
-
-macro_rules! verify_trace {
-    ($($arg:tt)*) => {
-        #[cfg(feature = "verification-logging")]
-        {
-            defmt_or_log::trace!($($arg)*);
-        }
-    };
-}
-
-macro_rules! verify_warn {
-    ($($arg:tt)*) => {
-        #[cfg(feature = "verification-logging")]
-        {
-            defmt_or_log::warn!($($arg)*);
-        }
-    };
-}
-
-macro_rules! verify_error {
-    ($($arg:tt)*) => {
-        #[cfg(feature = "verification-logging")]
-        {
-            defmt_or_log::error!($($arg)*);
-        }
-    };
-}
-
 /// Optimization barrier for fault-injection countermeasures: the asm operand contract forces the compiler to treat the returned value as arbitrary.
 /// Deliberately not `pure`/`nomem`, so the block also cannot be elided, duplicated, or reordered across memory operations.
 #[inline(always)]
@@ -138,18 +102,18 @@ fn load_nboot_auth_parms_from_ifr() -> Result<NbootImgAuthParms, BootError> {
 
     if let Some(cmpa_rotkh) = load_rotkh_from_cmpa() {
         parms.soc_ro_tnvm.soc_rkh = cmpa_rotkh;
-        verify_trace!("RKTH loaded from CMPA");
+        defmt_or_log::trace!("RKTH loaded from CMPA");
     } else {
-        verify_warn!("CMPA ROTKH read failed");
+        defmt_or_log::warn!("CMPA ROTKH read failed");
         return Err(BootError::RootOfTrust);
     }
 
     // Load PQC ROTKH for hybrid keys
     if let Some(cmpa_pqc_rotkh) = load_pqc_rotkh_from_cmpa() {
         parms.soc_ro_tnvm.soc_rkh_1 = cmpa_pqc_rotkh;
-        verify_trace!("PQC RKTH loaded from CMPA");
+        defmt_or_log::trace!("PQC RKTH loaded from CMPA");
     } else {
-        verify_warn!("CMPA PQC ROTKH read failed");
+        defmt_or_log::warn!("CMPA PQC ROTKH read failed");
         return Err(BootError::RootOfTrust);
     }
 
@@ -179,7 +143,7 @@ fn load_nboot_auth_parms_from_ifr() -> Result<NbootImgAuthParms, BootError> {
 
 fn verify_secure_boot_policies(dev_mode: &DevMode, secure_boot_state: SecureBootState) -> Result<(), BootError> {
     if matches!(secure_boot_state, SecureBootState::Unknown) {
-        verify_error!("Secure boot state could not be validated");
+        defmt_or_log::error!("Secure boot state could not be validated");
         return Err(BootError::Integrity);
     }
     // If we are NOT in development mode, make sure secure boot policies are compliant.
@@ -188,7 +152,7 @@ fn verify_secure_boot_policies(dev_mode: &DevMode, secure_boot_state: SecureBoot
         || fast_boot_enabled()
         || !low_power_authentication_enforced();
     if policy_violation && dev_mode.dev_token() != DevMode::DEV {
-        verify_error!(
+        defmt_or_log::error!(
             "Secure Boot policy violation: secure boot state={:?}, CNSA enforced={}, fast boot enabled={}, low power auth enforced={}",
             secure_boot_state,
             cnsa_enforced(),
@@ -217,7 +181,7 @@ pub fn verify_authenticity<'d>(
 
     verify_secure_boot_policies(&dev_mode, secure_boot_state)?;
 
-    verify_trace!("Initializing NBOOT context");
+    defmt_or_log::trace!("Initializing NBOOT context");
     let mut n_boot_api = embassy_mcxa::rom::get().nboot().map_err(|_| BootError::Authenticate)?;
 
     const MAX_FLASH_SLOT_SIZE: u32 = 2 * 1024 * 1024; // 2MB, TODO: make this configurable or derive from flash size
@@ -235,21 +199,21 @@ pub fn verify_authenticity<'d>(
     if let Some(image_rkth) = image_rkth {
         let image_rkth_words = image_rkth.as_le_words();
 
-        verify_info!("Derived image RKTH: {:?}", image_rkth_words);
+        defmt_or_log::info!("Derived image RKTH: {:?}", image_rkth_words);
         if image_rkth_words != parms.soc_ro_tnvm.soc_rkh {
             // non-const time is okay, these are public key hashes.
             if dev_mode.dev_token() == DevMode::DEV {
-                verify_warn!("Dev mode: copying from image RKTH");
+                defmt_or_log::warn!("Dev mode: copying from image RKTH");
                 parms.soc_ro_tnvm.soc_rkh.copy_from_slice(&image_rkth_words);
             } else {
-                verify_warn!("Production: image RKTH differs; not copying, will not call verify ");
+                defmt_or_log::warn!("Production: image RKTH differs; not copying, will not call verify ");
                 return Err(BootError::RootOfTrust);
             }
         } else {
-            verify_trace!("RKTH match");
+            defmt_or_log::trace!("RKTH match");
         }
     } else {
-        verify_warn!("Failed to derive image RKTH");
+        defmt_or_log::warn!("Failed to derive image RKTH");
         return Err(BootError::RootOfTrust);
     }
 
@@ -257,21 +221,21 @@ pub fn verify_authenticity<'d>(
     if let Some(pqc_rkth) = pqc_rkth {
         let pqc_rkth_words = pqc_rkth.as_le_words();
 
-        verify_info!("Derived image PQC RKTH: {:?}", pqc_rkth_words);
+        defmt_or_log::info!("Derived image PQC RKTH: {:?}", pqc_rkth_words);
         if pqc_rkth_words != parms.soc_ro_tnvm.soc_rkh_1 {
             //non-const time comparison is okay, these are public key hashes
             if dev_mode.dev_token() == DevMode::DEV {
-                verify_warn!("Dev mode: copying from image PQC RKTH");
+                defmt_or_log::warn!("Dev mode: copying from image PQC RKTH");
                 parms.soc_ro_tnvm.soc_rkh_1.copy_from_slice(&pqc_rkth_words);
             } else {
-                verify_warn!("Production: image PQC RKTH differs; not copying, will not call verify");
+                defmt_or_log::warn!("Production: image PQC RKTH differs; not copying, will not call verify");
                 return Err(BootError::RootOfTrust);
             }
         } else {
-            verify_trace!("PQC RKTH match");
+            defmt_or_log::trace!("PQC RKTH match");
         }
     } else {
-        verify_warn!("Failed to derive image PQC RKTH (ML-DSA not found or error)");
+        defmt_or_log::warn!("Failed to derive image PQC RKTH (ML-DSA not found or error)");
         return Err(BootError::RootOfTrust);
     }
 
@@ -284,14 +248,14 @@ pub fn verify_authenticity<'d>(
         }
     }
 
-    verify_trace!("begin auth");
+    defmt_or_log::trace!("begin auth");
     let status = n_boot_api
         .nboot_img_authenticate_romapi(image_base as u32, &mut parms)
         .map_err(map_nboot_status_to_boot_error)?;
 
     match status {
         NbootBoolValue::True => {
-            verify_info!("Hybrid Auth OK");
+            defmt_or_log::info!("Hybrid Auth OK");
             Ok(true)
         }
         _ => Ok(false),
