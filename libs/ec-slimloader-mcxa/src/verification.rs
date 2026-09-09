@@ -32,7 +32,7 @@ fn load_nboot_auth_parms_from_ifr(ifr: &IFR) -> Result<NbootImgAuthParms, BootEr
     }
 
     Ok(NbootImgAuthParms {
-        soc_ro_tnvm: NbootRotAuthParms {
+        soc_rot_nvm: NbootRotAuthParms {
             soc_root_key_revocation: [
                 from_rotk_en(ifr.cfpa.rotk_revoke.rotk_en(0)),
                 from_rotk_en(ifr.cfpa.rotk_revoke.rotk_en(1)),
@@ -104,8 +104,8 @@ pub fn verify_authenticity<'d>(
         )
         .map_err(|_| BootError::Hash)?;
 
-        parms.soc_ro_tnvm.soc_rkh.copy_from_slice(&image_rkth.as_words());
-        parms.soc_ro_tnvm.soc_rkh_1.copy_from_slice(&pqc_rkth.as_words());
+        parms.soc_rot_nvm.soc_rkh.copy_from_slice(&image_rkth.as_words());
+        parms.soc_rot_nvm.soc_rkh_1.copy_from_slice(&pqc_rkth.as_words());
     }
 
     defmt_or_log::trace!("begin auth");
