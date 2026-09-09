@@ -7,14 +7,15 @@ use defmt_or_log::info;
 use defmt_rtt as _;
 use embassy_executor::Spawner;
 use mcxa_577app_bootloader::{Bootloader, Config, JOURNAL_BUFFER_SIZE};
-use mcxa_security_provisioning::{
-    is_cfpa_erased, is_cmpa_erased, log_cmpa_write_error, set_ifr_initial_config_and_reset,
-};
+use mcxa_ifr::IFR;
+use mcxa_security_provisioning::{log_cmpa_write_error, set_ifr_initial_config_and_reset};
 use panic_probe as _;
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) -> ! {
-    if is_cmpa_erased() && is_cfpa_erased() {
+    let ifr = unsafe { IFR::current() };
+
+    if ifr.cmpa.boot_cfg0.marker() != 0x5963 {
         #[cfg(any(feature = "defmt", feature = "log"))]
         info!("CMPA and CFPA are erased, will provision with initial state, will reset");
         // causes a reset, so we will not return from this function. on next reset, IFR will have been provisioned and we will continue to bootloader.

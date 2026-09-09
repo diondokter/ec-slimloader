@@ -1,8 +1,9 @@
 #![no_std]
 
 pub mod lifecycle_provisioning;
+mod lifecycle;
 
-use ec_slimloader_mcxa::lifecycle::NbootLifecycleState;
+use lifecycle::NbootLifecycleState;
 pub use lifecycle_provisioning::*;
 
 mod sealed {
