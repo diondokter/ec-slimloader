@@ -117,7 +117,7 @@ impl DevMode {
 }
 
 const DEFAULT_NBOOT_PARMS: NbootImgAuthParms = NbootImgAuthParms {
-    soc_ro_tnvm: NbootRotAuthParms {
+    soc_rot_nvm: NbootRotAuthParms {
         // Start as revoked by default for safety; will be updated with real values from CFPA if read is successful.
         // This way if CFPA read fails for some reason, we won't accidentally treat revoked keys as valid.
         soc_root_key_revocation: [NbootRootKeyRevocation::Revoked; 4],
@@ -137,7 +137,7 @@ fn load_nboot_auth_parms_from_ifr() -> Result<NbootImgAuthParms, BootError> {
     let mut parms = DEFAULT_NBOOT_PARMS;
 
     if let Some(cmpa_rotkh) = load_rotkh_from_cmpa() {
-        parms.soc_ro_tnvm.soc_rkh = cmpa_rotkh;
+        parms.soc_rot_nvm.soc_rkh = cmpa_rotkh;
         verify_trace!("RKTH loaded from CMPA");
     } else {
         verify_warn!("CMPA ROTKH read failed");
@@ -146,7 +146,7 @@ fn load_nboot_auth_parms_from_ifr() -> Result<NbootImgAuthParms, BootError> {
 
     // Load PQC ROTKH for hybrid keys
     if let Some(cmpa_pqc_rotkh) = load_pqc_rotkh_from_cmpa() {
-        parms.soc_ro_tnvm.soc_rkh_1 = cmpa_pqc_rotkh;
+        parms.soc_rot_nvm.soc_rkh_1 = cmpa_pqc_rotkh;
         verify_trace!("PQC RKTH loaded from CMPA");
     } else {
         verify_warn!("CMPA PQC ROTKH read failed");
@@ -155,11 +155,11 @@ fn load_nboot_auth_parms_from_ifr() -> Result<NbootImgAuthParms, BootError> {
 
     //Load additional lifecycle state from CFPA/CMPA
     if let Some(cfpa_img_key_revocation) = load_image_key_revocation_from_cfpa() {
-        parms.soc_ro_tnvm.soc_image_key_revocation = cfpa_img_key_revocation;
+        parms.soc_rot_nvm.soc_image_key_revocation = cfpa_img_key_revocation;
     }
 
     if let Some(cfpa_root_key_revocation) = load_root_key_revocation_from_cfpa() {
-        parms.soc_ro_tnvm.soc_root_key_revocation = cfpa_root_key_revocation;
+        parms.soc_rot_nvm.soc_root_key_revocation = cfpa_root_key_revocation;
     }
 
     if let Some(cfpa_fw_version) = load_firmware_version_from_cfpa() {
@@ -167,11 +167,11 @@ fn load_nboot_auth_parms_from_ifr() -> Result<NbootImgAuthParms, BootError> {
     }
 
     if let Some(cmpa_root_key_usage) = load_rotk_usage_from_cmpa() {
-        parms.soc_ro_tnvm.soc_root_key_usage = cmpa_root_key_usage;
+        parms.soc_rot_nvm.soc_root_key_usage = cmpa_root_key_usage;
     }
 
     if let Some(cfpa_lifecycle) = load_lifecycle_from_cfpa() {
-        parms.soc_ro_tnvm.soc_lifecycle = cfpa_lifecycle.nboot_soc_lifecycle();
+        parms.soc_rot_nvm.soc_lifecycle = cfpa_lifecycle.nboot_soc_lifecycle();
     }
 
     Ok(parms)
@@ -236,11 +236,11 @@ pub fn verify_authenticity<'d>(
         let image_rkth_words = image_rkth.as_le_words();
 
         verify_info!("Derived image RKTH: {:?}", image_rkth_words);
-        if image_rkth_words != parms.soc_ro_tnvm.soc_rkh {
+        if image_rkth_words != parms.soc_rot_nvm.soc_rkh {
             // non-const time is okay, these are public key hashes.
             if dev_mode.dev_token() == DevMode::DEV {
                 verify_warn!("Dev mode: copying from image RKTH");
-                parms.soc_ro_tnvm.soc_rkh.copy_from_slice(&image_rkth_words);
+                parms.soc_rot_nvm.soc_rkh.copy_from_slice(&image_rkth_words);
             } else {
                 verify_warn!("Production: image RKTH differs; not copying, will not call verify ");
                 return Err(BootError::RootOfTrust);
@@ -258,11 +258,11 @@ pub fn verify_authenticity<'d>(
         let pqc_rkth_words = pqc_rkth.as_le_words();
 
         verify_info!("Derived image PQC RKTH: {:?}", pqc_rkth_words);
-        if pqc_rkth_words != parms.soc_ro_tnvm.soc_rkh_1 {
+        if pqc_rkth_words != parms.soc_rot_nvm.soc_rkh_1 {
             //non-const time comparison is okay, these are public key hashes
             if dev_mode.dev_token() == DevMode::DEV {
                 verify_warn!("Dev mode: copying from image PQC RKTH");
-                parms.soc_ro_tnvm.soc_rkh_1.copy_from_slice(&pqc_rkth_words);
+                parms.soc_rot_nvm.soc_rkh_1.copy_from_slice(&pqc_rkth_words);
             } else {
                 verify_warn!("Production: image PQC RKTH differs; not copying, will not call verify");
                 return Err(BootError::RootOfTrust);
@@ -277,8 +277,8 @@ pub fn verify_authenticity<'d>(
 
     // Last check to make sure that at this point, if PRODUCTION, i.e. NOT dev mode, we are handing over the correct IFR hashes to ROM.
     if dev_mode.dev_token() != DevMode::DEV {
-        let rkh_ok = load_rotkh_from_cmpa().is_some_and(|h| parms.soc_ro_tnvm.soc_rkh == h);
-        let pqc_ok = load_pqc_rotkh_from_cmpa().is_some_and(|h| parms.soc_ro_tnvm.soc_rkh_1 == h);
+        let rkh_ok = load_rotkh_from_cmpa().is_some_and(|h| parms.soc_rot_nvm.soc_rkh == h);
+        let pqc_ok = load_pqc_rotkh_from_cmpa().is_some_and(|h| parms.soc_rot_nvm.soc_rkh_1 == h);
         if !(rkh_ok && pqc_ok) {
             return Err(BootError::Integrity);
         }
