@@ -839,6 +839,7 @@ dependencies = [
  "embassy-mcxa",
  "embassy-sync 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "heapless 0.8.0",
+ "mcxa-ifr",
  "mcxa-security-provisioning",
  "panic-probe",
  "partition-manager",

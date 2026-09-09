@@ -1,7 +1,5 @@
 use core::mem;
 
-use embassy_mcxa::rom::{NbootRootKeyRevocation, NbootRootKeyUsage};
-
 // MCXA configuration flash layout (CFG vs SCRATCH)
 //
 // NOTE:
@@ -27,13 +25,13 @@ const ERASED_WORD: u32 = 0xFFFF_FFFF;
 // CFG bases (use for reading)
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum IFRConfigAreaBase {
+pub(crate) enum IFRConfigAreaBase {
     Cfpa = 0x0100_0000,
     Cmpa = 0x0100_0200,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum IFRPage {
+pub(crate) enum IFRPage {
     Cfpa,
     Cmpa,
     CmpaCustDefined,
@@ -80,12 +78,6 @@ impl IFRPage {
 pub fn load_cmpa_boot_cfg0() -> u32 {
     const CMPA_BOOT_CFG0: u32 = IFRConfigAreaBase::Cmpa as u32; // 0x0100_0200
     unsafe { core::ptr::read_volatile(CMPA_BOOT_CFG0 as *const u32) }
-}
-
-#[inline(always)]
-pub fn load_cmpa_boot_cfg1() -> u32 {
-    const CMPA_BOOT_CFG1: u32 = IFRConfigAreaBase::Cmpa as u32 + 0x0004; // 0x0100_0204
-    unsafe { core::ptr::read_volatile(CMPA_BOOT_CFG1 as *const u32) }
 }
 
 // Erased scan: OR-accumulate, no early exit.
@@ -353,22 +345,6 @@ pub enum CmpaUpdateConfigData {
 
 impl CmpaUpdateConfigData {
     #[inline(always)]
-    pub const fn start(self) -> u32 {
-        match self {
-            Self::BootCfg0 => IFRConfigAreaBase::Cmpa as u32,
-            Self::BootCfg1 => IFRConfigAreaBase::Cmpa as u32 + 0x04,
-            Self::LSpiCfg0 => IFRConfigAreaBase::Cmpa as u32 + 0x10,
-            Self::CcSocuPin => IFRConfigAreaBase::Cmpa as u32 + 0x40,
-            Self::CcSocuDflt => IFRConfigAreaBase::Cmpa as u32 + 0x44,
-            Self::SecureBootCfg => IFRConfigAreaBase::Cmpa as u32 + 0x50,
-            Self::RotkUsage => IFRConfigAreaBase::Cmpa as u32 + 0x54,
-            Self::SblStartAddr => IFRConfigAreaBase::Cmpa as u32 + 0x58,
-            Self::Rotkh => IFRConfigAreaBase::Cmpa as u32 + 0x60,
-            Self::PqcRotkh => IFRConfigAreaBase::Cmpa as u32 + 0xC0,
-        }
-    }
-
-    #[inline(always)]
     pub const fn byte_len(self) -> usize {
         const RKTH_WORDS: usize = 12;
         match self {
@@ -382,11 +358,6 @@ impl CmpaUpdateConfigData {
             | Self::LSpiCfg0 => mem::size_of::<u32>(),
             Self::Rotkh | Self::PqcRotkh => RKTH_WORDS * mem::size_of::<u32>(),
         }
-    }
-
-    #[inline(always)]
-    pub const fn word_len(self) -> usize {
-        self.byte_len() / mem::size_of::<u32>()
     }
 
     #[inline(always)]
@@ -410,37 +381,6 @@ impl CmpaUpdateConfigData {
         let start = self.byte_offset();
         start..(start + self.byte_len())
     }
-}
-
-/// Load 48 words (384 bits) of ECDSA RoTKH from CMPA, returning None if: CMPA appears corrupt/partially programmed (invalid header marker but not erased/ partially valid CMPA).
-/// Current provisioning uses SHA-512, but retains the leftmost 48 bytes (384 bits).
-pub fn load_rotkh_from_cmpa() -> Option<[u32; CmpaUpdateConfigData::Rotkh.word_len()]> {
-    let region = CmpaUpdateConfigData::Rotkh;
-    if !cmpa_header_marker_is_valid() && !is_cmpa_erased() {
-        return None; // CMPA corrupt or partially provisioned — don't trust ROTKH
-    }
-    let mut buf = [0u32; CmpaUpdateConfigData::Rotkh.word_len()];
-    for (i, slot) in buf.iter_mut().enumerate() {
-        let addr = region.start() + (i as u32 * 4);
-        *slot = unsafe { core::ptr::read_volatile(addr as *const u32) };
-    }
-    Some(buf)
-}
-
-/// Load 48 words (384 bits) of ML-DSA RoTKH from CMPA, returning None if: CMPA appears corrupt/partially programmed (invalid header marker but not erased/ partially valid CMPA).
-/// Current provisioning uses SHA-512, but retains the leftmost 48 bytes (384 bits).
-pub fn load_pqc_rotkh_from_cmpa() -> Option<[u32; CmpaUpdateConfigData::PqcRotkh.word_len()]> {
-    let region = CmpaUpdateConfigData::PqcRotkh;
-    // 384 bits ML-DSA-87 root key hash, left padded to 48 bytes like the ECDSA ROTKH
-    if !cmpa_header_marker_is_valid() && !is_cmpa_erased() {
-        return None; // CMPA corrupt or partially provisioned — don't trust ROTKH
-    }
-    let mut buf = [0u32; CmpaUpdateConfigData::PqcRotkh.word_len()];
-    for (i, slot) in buf.iter_mut().enumerate() {
-        let addr = region.start() + (i as u32 * 4);
-        *slot = unsafe { core::ptr::read_volatile(addr as *const u32) };
-    }
-    Some(buf)
 }
 
 // CFPA offsets (MCXA) — CFG region @ 0x0100_0000
@@ -496,121 +436,6 @@ pub fn load_cfpa_header_word() -> Option<u32> {
     cfpa_header_word_is_valid(h).then_some(h)
 }
 
-#[inline(always)]
-fn load_cfpa_word(address: u32) -> Option<u32> {
-    load_cfpa_header_word()?;
-    Some(unsafe { core::ptr::read_volatile(address as *const u32) })
-}
-
-/// Load lifecycle state function: reads the image key revocation word from CFPA.
-/// If both CFPA and CMPA are un-provisioned, returns Some(0) — no revocation (permissive for auth).
-pub fn load_image_key_revocation_from_cfpa() -> Option<u32> {
-    const CFPA_IMAGE_KEY_REVOKE: u32 = IFRConfigAreaBase::Cfpa as u32 + 0x0018;
-    if is_cfpa_erased() && is_cmpa_erased() {
-        return Some(0);
-    }
-    let word = load_cfpa_word(CFPA_IMAGE_KEY_REVOKE)?;
-    if word == ERASED_WORD {
-        return None; // Could mean corrupt/ partially provisioned CFPA, should not be trusted for auth decisions.
-    }
-    Some(word)
-}
-
-#[inline(always)]
-fn load_cfpa_rotk_revoke_word() -> Option<u32> {
-    const CFPA_ROTK_REVOKE: u32 = IFRConfigAreaBase::Cfpa as u32 + 0x0040;
-    let word = load_cfpa_word(CFPA_ROTK_REVOKE)?;
-    if word == ERASED_WORD {
-        return None;
-    }
-    Some(word)
-}
-
-/// Load lifecycle state function: reads the root key revocation words from CFPA. Returns a [NbootRootKeyRevocation; 4] array representing the revocation state of each root key,
-/// or None if the CFPA header is invalid or the ROTK_REVOKE word is erased (indicating unprovisioned/partially provisioned state that should not be trusted).
-/// If both CFPA and CMPA are un-provisioned, returns Some([Enabled; 4]) — all keys enabled (permissive for auth).
-/// This is already decoded into the ROM-facing `NbootRootKeyRevocation` values (`Enabled`/`Revoked`), not the raw 2-bit `RoTKx_EN` CFPA field encodings.
-pub fn load_root_key_revocation_from_cfpa() -> Option<[NbootRootKeyRevocation; 4]> {
-    if is_cfpa_erased() && is_cmpa_erased() {
-        return Some([NbootRootKeyRevocation::Enabled; 4]);
-    }
-    let word = load_cfpa_rotk_revoke_word()?;
-    Some(root_key_revocation_from_rotk_revoke_word(word))
-}
-
-// CFPA ROTK_REVOKE (word @ 0x40) bit layout (per user-provided breakdown):
-//
-// 31:30 ISP_ACTIVE_IMG
-// 29    DICE_UPD_ALIAS_CERT
-// 28    DICE_UPD_ALIAS_KEY
-// 27:8  Reserved
-//  7:6  RoTK3_EN (2 bits)
-//  5:4  RoTK2_EN (2 bits)
-//  3:2  RoTK1_EN (2 bits)
-//  1:0  RoTK0_EN (2 bits)
-
-#[inline(always)]
-fn rotk_en_fields_from_rotk_revoke_word(word: u32) -> [u8; 4] {
-    [
-        (word & 0x3) as u8,
-        ((word >> 2) & 0x3) as u8,
-        ((word >> 4) & 0x3) as u8,
-        ((word >> 6) & 0x3) as u8,
-    ]
-}
-
-#[inline(always)]
-fn root_key_revocation_from_rotk_revoke_word(word: u32) -> [NbootRootKeyRevocation; 4] {
-    // NBOOT `soc_rootKeyRevocation[]` uses a per-key revoke/enable constant (`0xAA`/`0xBB`), not the raw CFPA two-bit field values.
-    // The CFPA ROTK_REVOKE word encodes the revocation state for each root key in 2 bits, where
-    //   0b00/0b01 => enabled (not revoked)
-    //   0b10/0b11 => revoked
-    let mut revocation = [NbootRootKeyRevocation::Enabled; 4];
-    for (i, en2) in rotk_en_fields_from_rotk_revoke_word(word).iter().copied().enumerate() {
-        revocation[i] = match en2 & 0x3 {
-            0 | 1 => NbootRootKeyRevocation::Enabled,
-            2 | 3 => NbootRootKeyRevocation::Revoked,
-            _ => NbootRootKeyRevocation::Enabled,
-        };
-    }
-    revocation
-}
-
-/// The following three functions load DICE and ISP configuration bits from the CFPA ROTK_REVOKE word. These functions return None if the CFPA header or ROTK_REVOKE word is invalid/unprovisioned, and otherwise return the decoded bool as option.
-#[inline(always)]
-pub fn load_dice_upd_alias_key_from_cfpa() -> Option<bool> {
-    let word = load_cfpa_rotk_revoke_word()?;
-    Some(((word >> 28) & 1) != 0)
-}
-
-#[inline(always)]
-pub fn load_dice_upd_alias_cert_from_cfpa() -> Option<bool> {
-    let word = load_cfpa_rotk_revoke_word()?;
-    Some(((word >> 29) & 1) != 0)
-}
-
-#[inline(always)]
-pub fn load_isp_active_img_from_cfpa() -> Option<u8> {
-    let word = load_cfpa_rotk_revoke_word()?;
-    Some(((word >> 30) & 0x3) as u8)
-}
-
-/// Load firmware version from CFPA EE0_FW_VERSION word. Returns None if CFPA header is invalid or the EE0_FW_VERSION word is erased (indicating unprovisioned/partially provisioned state that should not be trusted).
-/// If both CFPA and CMPA are un-provisioned, returns Some(0) — version 0 allows any image version through.
-pub fn load_firmware_version_from_cfpa() -> Option<u32> {
-    const CFPA_EE0_FW_VERSION: u32 = IFRConfigAreaBase::Cfpa as u32 + 0x0020;
-    if is_cfpa_erased() && is_cmpa_erased() {
-        return Some(0);
-    }
-    // Use the EE0 firmware version slot so verification matches the image version field we
-    // expect to advance for the active execution environment.
-    let word = load_cfpa_word(CFPA_EE0_FW_VERSION)?;
-    if word == ERASED_WORD {
-        return None;
-    }
-    Some(word)
-}
-
 /// Load lifecycle state from CFPA header word: returns the decoded lifecycle state if the header is valid, or None if the header is invalid (e.g. incorrect marker, which could indicate unprovisioned/partially provisioned state or corruption). This is used as a prerequisite check for other CFPA fields since the header validity is an indicator of whether the CFPA contents can be trusted.
 /// Returns the decoded lifecylce to be used by the ROM API NBOOT functions, which uses different format that what is encoded in CFPA.
 /// The CFPA header encodes lifecycle in the lowest byte, with a separate inverted lifecycle byte as a validity check, and a 2 byte header marker in upper half of the word.
@@ -618,94 +443,6 @@ pub fn load_firmware_version_from_cfpa() -> Option<u32> {
 pub fn load_lifecycle_from_cfpa() -> Option<NbootLifecycleState> {
     let header = load_cfpa_header_word()?;
     NbootLifecycleDiscriminator::from_raw(header as u8).map(NbootLifecycleDiscriminator::state)
-}
-
-/// Helper function that returns true if the lifecycle is advanced past develop2 (i.e. the device is "fused" and no IFR changes are permitted). Returns None if the CFPA header is invalid (e.g. unprovisioned/partially provisioned state).
-pub fn is_sam_fused() -> Option<bool> {
-    let current_lifecycle = load_lifecycle_from_cfpa()?;
-    Some(current_lifecycle != NbootLifecycleState::Develop && current_lifecycle != NbootLifecycleState::Develop2)
-}
-
-/// Load key usage NbootRootKeyUsage for all four key sets from CMPA.RoTK_USAGE word, returning None if CMPA header is invalid or the RoTK_USAGE word is erased (indicating unprovisioned/partially provisioned state that should not be trusted). The mapping from the 3-bit usage fields in CMPA to the NbootRootKeyUsage enum is based on the reference table provided by the user.
-/// Note that the usage applies acroess ECDSA and ML-DSA root keys, so the same usage value applies to both the ROTKH and PQC_ROTKH for each key set.
-pub fn load_rotk_usage_from_cmpa() -> Option<[NbootRootKeyUsage; 4]> {
-    let word = cmpa_rotk_usage_word_checked()?;
-    fn map(bits: u32) -> NbootRootKeyUsage {
-        match bits & 0x7 {
-            0 => NbootRootKeyUsage::All,
-            1 => NbootRootKeyUsage::DebugCa,
-            2 => NbootRootKeyUsage::ImageCaFwCa,
-            3 => NbootRootKeyUsage::DebugCaImageCaFwCa,
-            4 => NbootRootKeyUsage::ImageKeyFwKey,
-            5 => NbootRootKeyUsage::ImageKey,
-            6 => NbootRootKeyUsage::FwKey,
-            _ => NbootRootKeyUsage::Unused,
-        }
-    }
-    let rotk0_usage = map(word & 0x7);
-    let rotk1_usage = map((word >> 3) & 0x7);
-    let rotk2_usage = map((word >> 6) & 0x7);
-    let rotk3_usage = map((word >> 9) & 0x7);
-    Some([rotk0_usage, rotk1_usage, rotk2_usage, rotk3_usage])
-}
-
-// CMPA.RoTK_USAGE bit layout (MCXA reference manual):
-//
-// [2:0]   RoTK0_Usage
-// [5:3]   RoTK1_Usage
-// [8:6]   RoTK2_Usage
-// [11:9]  RoTK3_Usage
-// [12]    SKIP_DICE
-// [13]    DICE_INC_NXP_CFG
-// [14]    DICE_INC_CUST_CFG
-// [15]    DICE_INC_NXP_FIELD_CFG
-// [31:16] Reserved
-
-#[inline(always)]
-fn cmpa_rotk_usage_word_checked() -> Option<u32> {
-    const CMPA_ROTK_USAGE: u32 = IFRConfigAreaBase::Cmpa as u32 + 0x0054; // 0x0100_0254
-
-    // If un-provisioned, the CMPA maybe left in an erased state (all 0xFF). If both CFPA and CMPA are erased, treat as "all keys allowed" (permissive for FIRST boot after off chip flashing).
-    if is_cfpa_erased() && is_cmpa_erased() {
-        return Some(0x0000_0000); // All four RoTKx_Usage = 0 => NbootRootKeyUsage::All
-    }
-    if !cmpa_header_marker_is_valid() {
-        return None;
-    }
-    let word = unsafe { core::ptr::read_volatile(CMPA_ROTK_USAGE as *const u32) };
-    if word == ERASED_WORD {
-        return None;
-    }
-    Some(word)
-}
-
-/// CMPA.RoTK_USAGE bit 12 (SKIP_DICE)
-pub fn load_dice_skip_from_cmpa() -> bool {
-    // If CMPA isn't valid, default to "do not skip DICE" (safer).
-    cmpa_rotk_usage_word_checked()
-        .map(|word| ((word >> 12) & 1) != 0)
-        .unwrap_or(false)
-}
-
-/// CMPA.RoTK_USAGE bit 13 (DICE_INC_NXP_CFG)
-pub fn load_dice_inc_nxp_cfg_from_cmpa() -> bool {
-    cmpa_rotk_usage_word_checked()
-        .map(|word| ((word >> 13) & 1) != 0)
-        .unwrap_or(false)
-}
-
-/// CMPA.RoTK_USAGE bit 14 (DICE_INC_CUST_CFG)
-pub fn load_dice_inc_cust_cfg_from_cmpa() -> bool {
-    cmpa_rotk_usage_word_checked()
-        .map(|word| ((word >> 14) & 1) != 0)
-        .unwrap_or(false)
-}
-
-/// CMPA.RoTK_USAGE bit 15 (DICE_INC_NXP_FIELD_CFG)
-pub fn load_dice_inc_nxp_field_cfg_from_cmpa() -> bool {
-    cmpa_rotk_usage_word_checked()
-        .map(|word| ((word >> 15) & 1) != 0)
-        .unwrap_or(false)
 }
 
 // Lifecycle state codes (low-byte discriminators) and full CFPA LC_STATE values.
