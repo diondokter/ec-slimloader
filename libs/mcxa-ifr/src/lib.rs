@@ -16,6 +16,15 @@ pub struct IFR {
 }
 
 impl IFR {
+    /// Get the current DEVCFG IFR values directly from the flash
+    ///
+    /// # Safety
+    ///
+    /// Only sound to call when on an MCXA5xx device
+    pub unsafe fn current() -> &'static IFR {
+        unsafe { &*(Update::DEVCFG_ADDR as *const IFR) }
+    }
+
     const _SIZE_CHECK: () = const {
         if core::mem::size_of::<Update>() as u32 != CFPA::DEVCFG_ADDR - Update::DEVCFG_ADDR {
             panic!("Update has wrong size");
@@ -236,25 +245,25 @@ pub struct Header {
 
 /// Below are the allowed values for this field. Use of other values may lead to bricked state.  
 #[bitenum(u8)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LifeCycleState {
-    DevelopState = 0x03,
-    Develop2State = 0x07,
-    InFieldState = 0x0F,
-    InFieldLockedState = 0xCF,
-    FaState = 0xA5,
-    BrickedStated = 0x5A,
+    Develop = 0x03,
+    Develop2 = 0x07,
+    InField = 0x0F,
+    InFieldLocked = 0xCF,
+    Fa = 0xA5,
+    Bricked = 0x5A,
 }
 
 #[bitenum(u8)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum InvLifeCycleState {
-    DevelopState = 0xFC,
-    Develop2State = 0xF8,
-    InFieldState = 0xF0,
-    InFieldLockedState = 0x30,
-    FaState = 0x5A,
-    BrickedStated = 0xA5,
+    Develop = 0xFC,
+    Develop2 = 0xF8,
+    InField = 0xF0,
+    InFieldLocked = 0x30,
+    Fa = 0x5A,
+    Bricked = 0xA5,
 }
 
 #[bitfield(u32, debug, default = 0)]
@@ -404,7 +413,7 @@ pub struct CMPA {
 impl CMPA {
     pub const DEVCFG_ADDR: u32 = 0x0100_0200;
     pub const SCRATCH_ADDR: u32 = 0x0100_2200;
-    
+
     pub const ZERO: Self = Self {
         boot_cfg0: BootCfg0::ZERO,
         boot_cfg1: BootCfg1::ZERO,
@@ -503,7 +512,7 @@ pub enum BigBool {
 
 /// All false variants mean the same to the boot rom
 #[bitenum(u2, exhaustive = true)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum InverseBigBool {
     True = 0b00,
     False = 0b01,
@@ -851,7 +860,7 @@ pub enum ActiveImgProt {
 }
 
 #[bitenum(u2, exhaustive = true)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum EnfCnsa {
     /// Use performance crypt algos (ECC P-256, SHA256 & AES 128).
     Performance = 0b00,
@@ -877,7 +886,7 @@ pub enum DiceCsrKeyType {
 }
 
 #[bitenum(u2, exhaustive = true)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LpSecBoot {
     /// Same as cold boot
     Cold = 0b00,
@@ -890,7 +899,7 @@ pub enum LpSecBoot {
 }
 
 #[bitenum(u2, exhaustive = true)]
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SecBootEn {
     /// All Image types are allowed.
     AllAllowed = 0b00,
@@ -999,6 +1008,11 @@ impl<T, const N: usize> ReverseArray<T, N> {
     pub const fn new(mut data: [T; N]) -> Self {
         data.reverse();
         Self(data)
+    }
+
+    /// Discard the wrapped and get the raw array (which is in reverse order)
+    pub fn degrade(self) -> [T; N] {
+        self.0
     }
 }
 
