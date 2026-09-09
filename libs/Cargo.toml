@@ -6,7 +6,8 @@ members = [
     "ec-slimloader-state",
     "ec-slimloader-mcxa",
     "imxrt-rom",
-    "mcxa-security-provisioning"
+    "mcxa-security-provisioning",
+    "mcxa-ifr",
 ]
 
 [workspace.package]
