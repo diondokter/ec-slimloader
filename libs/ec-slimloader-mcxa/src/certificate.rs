@@ -7,23 +7,13 @@ use embassy_mcxa::{peripherals, Peri};
 
 // 384-bit Root Key Table Hash (SHA-384 digest of RoTK public key X||Y)
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(C, align(4))]
 pub struct Rkth([u8; 48]);
 
 impl Rkth {
-    pub fn as_be_words(&self) -> [u32; 12] {
-        let mut w = [0u32; 12];
-        for (i, chunk) in self.0.as_chunks::<4>().0.iter().enumerate() {
-            w[i] = u32::from_be_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-        }
-        w
-    }
-
-    pub fn as_le_words(&self) -> [u32; 12] {
-        let mut w = [0u32; 12];
-        for (i, chunk) in self.0.as_chunks::<4>().0.iter().enumerate() {
-            w[i] = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-        }
-        w
+    pub fn as_words(self) -> [u32; 12] {
+        // Safety: Self has the proper align to be able to do this
+        unsafe { core::mem::transmute(self.0) }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -993,46 +983,32 @@ pub fn derive_image_rkth_pair<'d>(
     image_base: *const u8,
     container_offset: u32,
     image_len: u32,
-) -> (Option<Rkth>, Option<Rkth>) {
-    // Parse AHAB container once and extract both ECDSA and ML-DSA RKTH values
-    unsafe {
-        if let Ok(ahab) = parse_ahab_container(image_base, container_offset, image_len) {
-            if let Ok(srk_parsed) = parse_srk_array(ahab.srk_array_ptr, ahab.srk_array_len) {
-                // Derive ECDSA RKTH from complete ECDSA table (header + records)
-                let ecdsa_rkth = {
-                    let table = &srk_parsed.ecdsa_table;
+) -> Result<(Rkth, Rkth), DeriveError> {
+    let srk_parsed = unsafe {
+        let ahab = parse_ahab_container(image_base, container_offset, image_len)?;
+        parse_srk_array(ahab.srk_array_ptr, ahab.srk_array_len)?
+    };
 
-                    // Use the complete SRK table for RKTH calculation
-                    let table_bytes = table.raw_table_bytes;
+    // Derive ECDSA RKTH from complete ECDSA table (header + records)
+    let ecdsa_rkth = sha512_rkth_48(peri.reborrow(), srk_parsed.ecdsa_table.raw_table_bytes)
+        .map(Rkth)
+        .ok_or(DeriveError::Hash)?;
 
-                    let result = sha512_rkth_48(peri.reborrow(), table_bytes).map(Rkth);
-                    if result.is_none() {
-                        defmt_or_log::error!("SHA-512 unavailable for ECDSA RKTH");
-                    }
-                    result
-                };
+    // Derive ML-DSA RKTH from complete ML-DSA table (header + records)
+    let mldsa_rkth = sha512_rkth_48(peri.reborrow(), srk_parsed.mldsa_table.raw_table_bytes)
+        .map(Rkth)
+        .ok_or(DeriveError::Hash)?;
 
-                // Derive ML-DSA RKTH from complete ML-DSA table (header + records)
-                let mldsa_rkth = {
-                    let table = &srk_parsed.mldsa_table;
+    Ok((ecdsa_rkth, mldsa_rkth))
+}
 
-                    // Use the complete SRK table for RKTH calculation
-                    let table_bytes = table.raw_table_bytes;
+pub enum DeriveError {
+    Cert(CertError),
+    Hash,
+}
 
-                    let result = sha512_rkth_48(peri.reborrow(), table_bytes).map(Rkth);
-                    if result.is_none() {
-                        defmt_or_log::error!("SHA-512 unavailable for PQC RKTH");
-                    }
-                    result
-                };
-                defmt_or_log::trace!("Derived both ECDSA and ML-DSA RKTH values");
-                return (ecdsa_rkth, mldsa_rkth);
-            } else {
-                defmt_or_log::error!("Failed to parse SRK array");
-            }
-        } else {
-            defmt_or_log::error!("Failed to parse AHAB container");
-        }
+impl From<CertError> for DeriveError {
+    fn from(v: CertError) -> Self {
+        Self::Cert(v)
     }
-    (None, None)
 }

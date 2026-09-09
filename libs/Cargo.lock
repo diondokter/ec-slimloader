@@ -497,6 +497,7 @@ dependencies = [
  "embedded-storage-async",
  "heapless 0.8.0",
  "log",
+ "mcxa-ifr",
  "partition-manager",
  "partition-manager-macros",
  "static_cell",

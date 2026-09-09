@@ -2,8 +2,6 @@ use core::mem;
 
 use embassy_mcxa::rom::{NbootRootKeyRevocation, NbootRootKeyUsage};
 
-use crate::verification::zero_mask;
-
 // MCXA configuration flash layout (CFG vs SCRATCH)
 //
 // NOTE:
@@ -132,10 +130,6 @@ pub fn is_cfpa_erased() -> bool {
     true
 }
 
-fn cmpa_marker_deviation() -> u32 {
-    (load_cmpa_boot_cfg0() >> 16) ^ (CMPA_HEADER_MARKER as u32) // Measures if CMPA header marker is valid (0 deviation = valid, non-zero deviation = invalid) without branching.
-}
-
 #[inline(always)]
 fn load_cmpa_header_marker() -> u16 {
     (load_cmpa_boot_cfg0() >> 16) as u16
@@ -161,28 +155,6 @@ pub fn cmpa_header_marker_is_valid() -> bool {
 fn load_cmpa_secure_boot_cfg() -> u32 {
     const CMPA_SECURE_BOOT_CFG: u32 = IFRConfigAreaBase::Cmpa as u32 + 0x0050; // 0x0100_0250
     unsafe { core::ptr::read_volatile(CMPA_SECURE_BOOT_CFG as *const u32) }
-}
-
-/// Measures the "deviation" without any branches from the live configuration of a device from the expected configuration of a development device. This is used to determine if the device
-/// is in development mode or production mode. The function returns 0 if the device is in development mode, and non-zero if the device is in production mode.
-pub fn dev_config_deviation() -> u32 {
-    // Lifecycle leg: full-word match against the derived Develop pattern.
-    let lc_dev = load_cfpa_header_word_raw() ^ cfpa_header_for(NbootLifecycleState::Develop); // If we are in Develop LC, 0 deviation because XOR.
-
-    // Provisioned-dev leg: valid CMPA marker AND SEC_BOOT_EN bit 1 clear.
-    let provisioned_dev = cmpa_marker_deviation() // is marker valid? (0 = valid, non-zero = invalid)
-        | (load_cmpa_secure_boot_cfg() & 0b10).wrapping_mul(0x5555_5555); // Is secure boot enabled? (deviation of 0 = disabled, non-zero = enabled).
-                                                                          // Note that value of 0 or 1 in 1:0 in SEC_BOOT_EN means signature verification is not enforced.
-                                                                          // Multiply by 0x5555_5555 to spread the bit across all 32 bits for OR-accumulation. This here is the narrowest Shannon bit at source,
-                                                                          // beyond our control, so we can widen the single bit to all 32 bits without any branches.
-                                                                          // Signature verification enforcement causes deviation from the expected dev-mode configuration.
-
-    // Blank-part leg: whole CMPA page still erased (provisioning bootstrap).
-    let sb_dev = !(zero_mask(provisioned_dev) | zero_mask(cmpa_erased_deviation())); // If secure boot is disabled AND CMPA marker is valid,
-                                                                                     // then we are in dev mode. Either false means deviation.  CMPA is not erased, deviation. BUT EITHER of these deviating means we have deviation from the expected dev-mode configuration.
-                                                                                     // Therefore, in that case, return non-zero deviation. If both are true, then we are in dev mode, return zero deviation.
-
-    lc_dev | sb_dev
 }
 
 #[repr(u8)]
@@ -522,13 +494,6 @@ pub fn load_cfpa_header_word_raw() -> u32 {
 pub fn load_cfpa_header_word() -> Option<u32> {
     let h = load_cfpa_header_word_raw();
     cfpa_header_word_is_valid(h).then_some(h)
-}
-
-/// The exact CFPA header word for a given lifecycle state:
-/// marker | !lc | lc. Derived, not a magic literal.
-const fn cfpa_header_for(lc: NbootLifecycleState) -> u32 {
-    let lc = lc as u32 & 0xFF;
-    ((CFPA_HEADER_MARKER as u32) << 16) | ((!lc & 0xFF) << 8) | lc
 }
 
 #[inline(always)]

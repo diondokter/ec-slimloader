@@ -1266,20 +1266,13 @@ pub fn configure_rotkh_and_enable_secure_boot_policies_and_reset(
             image_base,
             image_header.extended_header_offset(),
             image_header.image_length(),
-        );
-        if let Some(image_ecdsa_rkth) = image_ecdsa_rkth {
-            if image_ecdsa_rkth.as_bytes() != rotkh_bytes {
-                return Err(CmpaWriteError::RotkhMismatch);
-            }
-        } else {
-            return Err(CmpaWriteError::HashError);
+        )
+        .map_err(|_| CmpaWriteError::HashError)?;
+        if image_ecdsa_rkth.as_bytes() != rotkh_bytes {
+            return Err(CmpaWriteError::RotkhMismatch);
         }
-        if let Some(image_pqc_rkth) = image_pqc_rkth {
-            if image_pqc_rkth.as_bytes() != pqc_rotkh_bytes {
-                return Err(CmpaWriteError::RotkhMismatch);
-            }
-        } else {
-            return Err(CmpaWriteError::HashError);
+        if image_pqc_rkth.as_bytes() != pqc_rotkh_bytes {
+            return Err(CmpaWriteError::RotkhMismatch);
         }
     }
     cmpa_page[CmpaUpdateConfigData::Rotkh.byte_range()].copy_from_slice(rotkh_bytes);

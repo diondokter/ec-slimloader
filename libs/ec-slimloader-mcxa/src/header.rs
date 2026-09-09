@@ -89,6 +89,3 @@ impl<'a> ImageHeader<'a> {
         self.cert_block_offset() // caller will add certificate size once parsed
     }
 }
-
-// TODO: Active image protection (GLBAC/XOM): determine start/end addresses to protect
-//       after successful verification. Likely protect Slot A region or [image_base .. image_base+image_length].
