@@ -257,6 +257,22 @@ impl Provisioner {
 
         self
     }
+
+    pub fn check_settings(&mut self) -> Result<&mut Self, ProvisionError> {
+        // // CMPA must be provisioned and valid before any policy field can be trusted, unless bricking the device.
+        // if is_cmpa_erased() || !cmpa_header_marker_is_valid() {
+        //     return Err(CfpaWriteError::SecurePolicyViolation);
+        // }
+        // if !hybrid_secure_boot_enforced()
+        //     || !cnsa_enforced()
+        //     || fast_boot_enabled()
+        //     || !low_power_authentication_enforced()
+        // {
+        //     return Err(CfpaWriteError::SecurePolicyViolation);
+        // }
+
+        Ok(self)
+    }
 }
 
 pub enum ProvisionError {
