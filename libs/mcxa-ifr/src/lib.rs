@@ -8,7 +8,7 @@ use arbitrary_int::{u10, u24, u3, u4, u5, u7};
 use bitbybit::{bitenum, bitfield};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct IFR {
     pub update: Update,
     pub cfpa: CFPA,
@@ -16,6 +16,11 @@ pub struct IFR {
 }
 
 impl IFR {
+    pub const DEVCFG_ADDR: u32 = 0x0100_0000;
+    pub const SCRATCH_ADDR: u32 = 0x0100_2000;
+    pub const SECURE_DEVCFG_ADDR: u32 = 0x1100_0000;
+    pub const SECURE_SCRATCH_ADDR: u32 = 0x1100_2000;
+
     /// Get the current DEVCFG IFR values directly from the flash
     ///
     /// # Safety
@@ -23,6 +28,15 @@ impl IFR {
     /// Only sound to call when on an MCXA5xx device
     pub unsafe fn current() -> &'static IFR {
         unsafe { &*(Update::DEVCFG_ADDR as *const IFR) }
+    }
+
+    /// Get the current secure DEVCFG IFR values directly from the flash
+    ///
+    /// # Safety
+    ///
+    /// Only sound to call when on an MCXA5xx device
+    pub unsafe fn secure_current() -> &'static IFR {
+        unsafe { &*(Update::SECURE_DEVCFG_ADDR as *const IFR) }
     }
 
     const _SIZE_CHECK: () = const {
@@ -39,10 +53,15 @@ impl IFR {
             panic!("IFR has wrong size");
         }
     };
+
+    pub fn as_array(&self) -> &[u8; core::mem::size_of::<Self>()] {
+        // Safety: We're a repr(C) struct with no padding bytes
+        unsafe { core::mem::transmute(self) }
+    }
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Update {
     /// Device configuration update request type.
     pub devcfg_upd_type: UpdateType,
@@ -52,6 +71,8 @@ pub struct Update {
 impl Update {
     pub const DEVCFG_ADDR: u32 = 0x0100_0000;
     pub const SCRATCH_ADDR: u32 = 0x0100_2000;
+    pub const SECURE_DEVCFG_ADDR: u32 = 0x1100_0000;
+    pub const SECURE_SCRATCH_ADDR: u32 = 0x1100_2000;
 }
 
 #[bitenum(u32)]
@@ -68,7 +89,7 @@ pub enum UpdateType {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CFPA {
     pub header: Header,
     /// CFPA page version.
@@ -194,6 +215,8 @@ pub struct CFPA {
 impl CFPA {
     pub const DEVCFG_ADDR: u32 = 0x0100_0010;
     pub const SCRATCH_ADDR: u32 = 0x0100_2010;
+    pub const SECURE_DEVCFG_ADDR: u32 = 0x1100_0010;
+    pub const SECURE_SCRATCH_ADDR: u32 = 0x1100_2010;
 
     pub const ZERO: Self = Self {
         header: Header::ZERO,
@@ -226,6 +249,15 @@ impl CFPA {
         iped_gcm_aad_ctx: [0; _],
         _reserved5: [0; _],
     };
+
+    pub fn is_erased(&self) -> bool {
+        self.cfpa_page_version == u32::MAX
+    }
+
+    pub fn as_array(&self) -> &[u8; core::mem::size_of::<Self>()] {
+        // Safety: We're a repr(C) struct with no padding bytes
+        unsafe { core::mem::transmute(self) }
+    }
 }
 
 #[bitfield(u32, debug)]
@@ -251,8 +283,38 @@ pub enum LifeCycleState {
     Develop2 = 0x07,
     InField = 0x0F,
     InFieldLocked = 0xCF,
-    Fa = 0xA5,
+    OemFieldReturn = 0x1F,
+    FailureAnalysis = 0xA5,
     Bricked = 0x5A,
+}
+
+impl LifeCycleState {
+    /// Returns a monotonic rank for forward-only progression checks.
+    /// Higher rank = further along the lifecycle.
+    pub const fn rank(self) -> u8 {
+        match self {
+            Self::Develop => 0,
+            Self::Develop2 => 1,
+            Self::InField => 2,
+            Self::InFieldLocked => 2, // Same rank as InField since locking is not a lifecycle progression.
+            Self::OemFieldReturn => 3,
+            Self::FailureAnalysis => 4,
+            Self::Bricked => 5,
+        }
+    }
+
+    /// Get the [InvLifeCycleState] for this state
+    pub const fn inverse(self) -> InvLifeCycleState {
+        match self {
+            LifeCycleState::Develop => InvLifeCycleState::Develop,
+            LifeCycleState::Develop2 => InvLifeCycleState::Develop2,
+            LifeCycleState::InField => InvLifeCycleState::InField,
+            LifeCycleState::InFieldLocked => InvLifeCycleState::InFieldLocked,
+            LifeCycleState::OemFieldReturn => InvLifeCycleState::OemFieldReturn,
+            LifeCycleState::FailureAnalysis => InvLifeCycleState::FailureAnalysis,
+            LifeCycleState::Bricked => InvLifeCycleState::Bricked,
+        }
+    }
 }
 
 #[bitenum(u8)]
@@ -262,7 +324,8 @@ pub enum InvLifeCycleState {
     Develop2 = 0xF8,
     InField = 0xF0,
     InFieldLocked = 0x30,
-    Fa = 0x5A,
+    OemFieldReturn = 0xE0,
+    FailureAnalysis = 0x5A,
     Bricked = 0xA5,
 }
 
@@ -352,7 +415,7 @@ pub enum AclSec {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CMPA {
     pub boot_cfg0: BootCfg0,
     pub boot_cfg1: BootCfg1,
@@ -413,6 +476,8 @@ pub struct CMPA {
 impl CMPA {
     pub const DEVCFG_ADDR: u32 = 0x0100_0200;
     pub const SCRATCH_ADDR: u32 = 0x0100_2200;
+    pub const SECURE_DEVCFG_ADDR: u32 = 0x1100_0200;
+    pub const SECURE_SCRATCH_ADDR: u32 = 0x1100_2200;
 
     pub const ZERO: Self = Self {
         boot_cfg0: BootCfg0::ZERO,
@@ -453,6 +518,11 @@ impl CMPA {
         mldsa_cert_temp_addr: 0,
         mldsa_cert_temp_hash: ReverseArray::new([0; _]),
     };
+
+    pub fn as_array(&self) -> &[u8; core::mem::size_of::<Self>()] {
+        // Safety: We're a repr(C) struct with no padding bytes
+        unsafe { core::mem::transmute(self) }
+    }
 }
 
 #[bitfield(u32, debug, default = 0)]
@@ -510,6 +580,16 @@ pub enum BigBool {
     True2 = 0b11,
 }
 
+impl From<bool> for BigBool {
+    fn from(value: bool) -> Self {
+        if value {
+            Self::True
+        } else {
+            Self::False
+        }
+    }
+}
+
 /// All false variants mean the same to the boot rom
 #[bitenum(u2, exhaustive = true)]
 #[derive(Debug, PartialEq, Eq)]
@@ -518,6 +598,16 @@ pub enum InverseBigBool {
     False = 0b01,
     False1 = 0b10,
     False2 = 0b11,
+}
+
+impl From<bool> for InverseBigBool {
+    fn from(value: bool) -> Self {
+        if value {
+            Self::True
+        } else {
+            Self::False
+        }
+    }
 }
 
 /// All enabled variants mean the same to the boot rom
@@ -626,7 +716,7 @@ pub struct BootTimers {
     pub powerdown_timeout_secs: u16,
 }
 
-#[bitfield(u32, debug)]
+#[bitfield(u32, debug, default = 0)]
 pub struct LspiQflashCfg0 {
     /// Quad SPI port
     #[bits(30..=31, rw)]

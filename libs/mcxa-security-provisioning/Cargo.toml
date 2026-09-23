@@ -19,6 +19,7 @@ embassy-sync = "0.8.0"
 partition-manager = { git = "https://github.com/OpenDevicePartnership/embedded-services", tag = "v0.1.0", default-features = false }
 partition-manager-macros = { git = "https://github.com/OpenDevicePartnership/embedded-services", tag = "v0.1.0" }
 static_cell = "2.1"
+mcxa-ifr = { path = "../mcxa-ifr" }
 
 # Re-uses the MCXA lifecycle/IFR types defined in ec-slimloader-mcxa
 ec-slimloader-mcxa = { path = "../ec-slimloader-mcxa", default-features = false, features = ["mcxa5xx"] }

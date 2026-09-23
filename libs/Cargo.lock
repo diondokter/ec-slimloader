@@ -1154,6 +1154,7 @@ dependencies = [
  "embassy-sync 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-storage-async",
  "log",
+ "mcxa-ifr",
  "partition-manager",
  "partition-manager-macros",
  "static_cell",
