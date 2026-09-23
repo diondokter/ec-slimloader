@@ -5,13 +5,15 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/OpenDevicePartnership/ec-slimloader"
 
+[lints]
+workspace = true
+
 [dependencies]
 cortex-m = { version = "0.7.7" }
 defmt = { version = "0.3", optional = true }
 defmt-or-log = { version = "0.2.3" }
 log = { version = "0.4", optional = true }
 embedded-storage-async = "0.4.1"
-embassy-futures = "0.1.2"
 embassy-mcxa = { workspace = true, features = ["mcxa5xx"] }
 embassy-sync = "0.8.0"
 partition-manager = { git = "https://github.com/OpenDevicePartnership/embedded-services", tag = "v0.1.0", default-features = false }

@@ -1150,7 +1150,6 @@ dependencies = [
  "defmt 0.3.100",
  "defmt-or-log",
  "ec-slimloader-mcxa",
- "embassy-futures 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "embassy-mcxa",
  "embassy-sync 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-storage-async",

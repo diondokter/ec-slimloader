@@ -597,9 +597,8 @@ impl<C: McxaConfig + BootStatePolicy> Board for Mcxa<C> {
             const SLOT_SIZE: u32 = 0x000F_8000; // 992 KB
             let image_base = app_base as *const u8;
             let jump_address = image_base as *const u32;
-            let image_header = match unsafe { header::ImageHeader::from_ptr(image_base, SLOT_SIZE) } {
-                Ok(header) => header,
-                Err(_) => return ec_slimloader::BootError::Markers,
+            let Ok(image_header) = (unsafe { header::ImageHeader::from_ptr(image_base, SLOT_SIZE) }) else {
+                return ec_slimloader::BootError::Markers;
             };
 
             let image_len = image_header.image_length();

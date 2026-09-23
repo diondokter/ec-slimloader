@@ -1,7 +1,7 @@
 #![no_std]
 
-pub mod lifecycle_provisioning;
 mod lifecycle;
+pub mod lifecycle_provisioning;
 
 use lifecycle::NbootLifecycleState;
 pub use lifecycle_provisioning::*;

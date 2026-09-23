@@ -1,18 +1,18 @@
 use core::convert::Infallible;
 use core::ptr;
 
-use crate::lifecycle::NbootLifecycleState;
-use crate::lifecycle::{
-    cmpa_header_marker_is_valid, cnsa_enforced, fast_boot_enabled, hybrid_secure_boot_enforced, is_cfpa_erased,
-    is_cmpa_erased, load_cfpa_header_word, load_lifecycle_from_cfpa, low_power_authentication_enforced,
-    CmpaUpdateConfigData, CnsaLevel, IFRConfigAreaBase, IFRPage, LpWakePolicy, SecureBootLevel, XipImageProtect,
-};
 use defmt_or_log::error;
 use ec_slimloader_mcxa::certificate::derive_image_rkth_pair;
 use ec_slimloader_mcxa::header::ImageHeader;
 use embassy_mcxa::rom::{FlashError, NbootRootKeyUsage};
 use embassy_mcxa::{peripherals, Peri};
 
+use crate::lifecycle::{
+    cmpa_header_marker_is_valid, cnsa_enforced, fast_boot_enabled, hybrid_secure_boot_enforced, is_cfpa_erased,
+    is_cmpa_erased, load_cfpa_header_word, load_lifecycle_from_cfpa, low_power_authentication_enforced,
+    CmpaUpdateConfigData, CnsaLevel, IFRConfigAreaBase, IFRPage, LpWakePolicy, NbootLifecycleState, SecureBootLevel,
+    XipImageProtect,
+};
 use crate::{CanAdvanceTo, LifecycleState};
 
 /// Token produced by `verify_lifecycle_transition()'. Carries the verified target
