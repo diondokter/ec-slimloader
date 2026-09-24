@@ -20,12 +20,12 @@ use mimxrt600_fcb::FlexSpiNumPads::Octal;
 use mimxrt600_fcb::{ControllerMiscOption, SFlashPadType, SerialClkFreq, SerialNORType};
 
 #[cfg(feature = "imxrt-fcb-rt685evk")]
-#[link_section = ".fcb"]
+#[unsafe(link_section = ".fcb")]
 #[used]
 static FCB_685EVK: FlexSPIFlashConfigurationBlock = FlexSPIFlashConfigurationBlock::build();
 
 #[cfg(feature = "imxrt-fcb-1spi-a1-nor")]
-#[link_section = ".fcb"]
+#[unsafe(link_section = ".fcb")]
 #[used]
 static FCB_A1NOR: FlexSPIFlashConfigurationBlock = FlexSPIFlashConfigurationBlock::build()
     .device_mode_cfg_enable(0)
