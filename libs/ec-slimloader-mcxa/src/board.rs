@@ -52,11 +52,11 @@ fn in_emulation_window(offset: usize, len: usize) -> bool {
 
 // ─── FlexSPI NOR backend (MCXA hardware only) ─────────────────────────────
 #[cfg(all(target_os = "none", feature = "mcxa5xx"))]
+use embassy_mcxa::clocks::PoweredClock;
+#[cfg(all(target_os = "none", feature = "mcxa5xx"))]
 use embassy_mcxa::clocks::config::{
     CoreSleep, Div8, FircConfig, FircFreqSel, MainClockConfig, MainClockSource, VddDriveStrength, VddLevel,
 };
-#[cfg(all(target_os = "none", feature = "mcxa5xx"))]
-use embassy_mcxa::clocks::PoweredClock;
 #[cfg(all(target_os = "none", feature = "mcxa5xx"))]
 use embassy_mcxa::flexspi::lookup::opcodes::sdr::{CMD, RADDR, READ, WRITE};
 #[cfg(all(target_os = "none", feature = "mcxa5xx"))]
@@ -64,7 +64,7 @@ use embassy_mcxa::flexspi::lookup::{Command, Instr, LookupTable, Pads, SequenceB
 #[cfg(all(target_os = "none", feature = "mcxa5xx"))]
 use embassy_mcxa::flexspi::{Blocking, ClockConfig, FlashConfig, Flexspi, NorFlash as FlexspiNor};
 #[cfg(all(target_os = "none", feature = "mcxa5xx"))]
-use embassy_mcxa::{peripherals, Peri};
+use embassy_mcxa::{Peri, peripherals};
 
 /// Single-lane (1-bit SPI) LUT + geometry for the Macronix MX25U.
 /// Port A (EVK, `mcxa5xxevk` feature): flash starts at SFAR=0, use actual size.
@@ -505,26 +505,32 @@ impl<C: McxaConfig + BootStatePolicy> Board for Mcxa<C> {
         // 0xFF'ing the journal). If the bytes change, that tool really wrote to
         // external flash; if they don't, it didn't.
         #[cfg(all(target_os = "none", feature = "mcxa5xx", feature = "flexspi-selftest"))]
-        let external =
-            {
-                let mut external = external;
-                use embassy_mcxa::pac;
-                // JEDEC/vendor id: proves the MCU can actually reach the external NOR.
-                flexspi_ip_command(0, Command::ReadId as u8, 3);
-                let jedec = pac::FLEXSPI0.rfdr(0).read().rxdata();
-                defmt_or_log::info!(
-                    "flexspi-probe: JEDEC id = {:#010x} (MX25U low byte should be 0xc2)",
-                    jedec
-                );
-                // Boot-journal bytes at external offset 0x1000 (read-only).
-                let mut j = [0u8; 16];
-                let _ = external.read(0x1000, &mut j).await;
-                defmt_or_log::info!(
-                "flexspi-probe: journal @0x1000 = [{:#04x} {:#04x} {:#04x} {:#04x} {:#04x} {:#04x} {:#04x} {:#04x}]",
-                j[0], j[1], j[2], j[3], j[4], j[5], j[6], j[7]
+        let external = {
+            let mut external = external;
+            use embassy_mcxa::pac;
+            // JEDEC/vendor id: proves the MCU can actually reach the external NOR.
+            flexspi_ip_command(0, Command::ReadId as u8, 3);
+            let jedec = pac::FLEXSPI0.rfdr(0).read().rxdata();
+            defmt_or_log::info!(
+                "flexspi-probe: JEDEC id = {:#010x} (MX25U low byte should be 0xc2)",
+                jedec
             );
-                external
-            };
+            // Boot-journal bytes at external offset 0x1000 (read-only).
+            let mut j = [0u8; 16];
+            let _ = external.read(0x1000, &mut j).await;
+            defmt_or_log::info!(
+                "flexspi-probe: journal @0x1000 = [{:#04x} {:#04x} {:#04x} {:#04x} {:#04x} {:#04x} {:#04x} {:#04x}]",
+                j[0],
+                j[1],
+                j[2],
+                j[3],
+                j[4],
+                j[5],
+                j[6],
+                j[7]
+            );
+            external
+        };
 
         let ext_flash_manager = EXT_FLASH.init_with(|| PartitionManager::new(external));
 

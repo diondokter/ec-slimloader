@@ -4,7 +4,7 @@
 
 use core::ops::{Index, IndexMut};
 
-use arbitrary_int::{u10, u24, u3, u4, u5, u7};
+use arbitrary_int::{u3, u4, u5, u7, u10, u24};
 use bitbybit::{bitenum, bitfield};
 
 #[repr(C)]
@@ -582,11 +582,7 @@ pub enum BigBool {
 
 impl From<bool> for BigBool {
     fn from(value: bool) -> Self {
-        if value {
-            Self::True
-        } else {
-            Self::False
-        }
+        if value { Self::True } else { Self::False }
     }
 }
 
@@ -602,11 +598,7 @@ pub enum InverseBigBool {
 
 impl From<bool> for InverseBigBool {
     fn from(value: bool) -> Self {
-        if value {
-            Self::True
-        } else {
-            Self::False
-        }
+        if value { Self::True } else { Self::False }
     }
 }
 

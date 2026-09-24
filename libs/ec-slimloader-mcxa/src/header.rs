@@ -1,4 +1,5 @@
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct VectorAndHeaderRaw {
     // ARM CortexM vector table interleaved with NXP bootloader fields
     pub initial_sp: u32,             // 0x00 Stack pointer
@@ -23,32 +24,21 @@ impl VectorAndHeaderRaw {
     pub const SIZE: usize = core::mem::size_of::<Self>(); // 0x40 bytes (16 x u32)
 }
 
-pub struct ImageHeader<'a> {
-    pub raw: &'a VectorAndHeaderRaw,
+pub struct ImageHeader {
+    pub raw: VectorAndHeaderRaw,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum HeaderError {
-    LengthZero,
-    LengthTooSmall,
-    LengthTooLarge,
-    CertOffset,
-    Alignment,
-    Type,
-}
+impl ImageHeader {
+    pub fn from_ptr(ptr: *const u8, slot_size: u32) -> Result<Self, HeaderError> {
+        let ptr = ptr.cast::<VectorAndHeaderRaw>();
 
-impl<'a> ImageHeader<'a> {
-    /// # Safety
-    ///
-    /// `ptr` must be a valid pointer to a readable, 4-byte-aligned region of at least `slot_size` bytes.
-    pub unsafe fn from_ptr(ptr: *const u8, slot_size: u32) -> Result<Self, HeaderError> {
-        if !(ptr as usize).is_multiple_of(4) {
+        if !(ptr.is_aligned()) {
             return Err(HeaderError::Alignment);
         }
         if (slot_size as usize) < (core::mem::size_of::<VectorAndHeaderRaw>()) {
             return Err(HeaderError::LengthTooSmall);
         }
-        let raw = &*(ptr as *const VectorAndHeaderRaw);
+        let raw = unsafe { *ptr };
         if raw.image_length == 0 {
             return Err(HeaderError::LengthZero);
         }
@@ -88,4 +78,14 @@ impl<'a> ImageHeader<'a> {
         // assume manifest immediately after certificate block
         self.cert_block_offset() // caller will add certificate size once parsed
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeaderError {
+    LengthZero,
+    LengthTooSmall,
+    LengthTooLarge,
+    CertOffset,
+    Alignment,
+    Type,
 }

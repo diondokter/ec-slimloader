@@ -2,7 +2,7 @@
 
 use mimxrt600_fcb::FlexSpiLutOpcode::{CMD_SDR, READ_SDR, STOP};
 use mimxrt600_fcb::FlexSpiNumPads::Single;
-use mimxrt600_fcb::{flexspi_lut_seq, FlexSPIFlashConfigurationBlock};
+use mimxrt600_fcb::{FlexSPIFlashConfigurationBlock, flexspi_lut_seq};
 
 #[cfg(all(feature = "imxrt-fcb-1spi-nor", feature = "imxrt-fcb-rt685evk"))]
 compile_error!("Cannot allocate more than one FCB at a time!");

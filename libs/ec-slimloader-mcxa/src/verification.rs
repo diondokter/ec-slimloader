@@ -4,8 +4,8 @@ use ec_slimloader::BootError;
 use embassy_mcxa::rom::{
     NbootBoolValue, NbootImgAuthParms, NbootRootKeyRevocation, NbootRootKeyType, NbootRootKeyUsage, NbootRotAuthParms,
 };
-use embassy_mcxa::{peripherals, Peri};
-use mcxa_ifr::{EnfCnsa, InverseBigBool, LifeCycleState, LpSecBoot, RotkEn, RotkUsageVal, SecBootEn, IFR};
+use embassy_mcxa::{Peri, peripherals};
+use mcxa_ifr::{EnfCnsa, IFR, InverseBigBool, LifeCycleState, LpSecBoot, RotkEn, RotkUsageVal, SecBootEn};
 
 use crate::certificate::derive_image_rkth_pair;
 use crate::error::map_nboot_status_to_boot_error;

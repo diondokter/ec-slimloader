@@ -3,7 +3,7 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 use core::mem::size_of;
 
-use embassy_mcxa::{peripherals, Peri};
+use embassy_mcxa::{Peri, peripherals};
 
 // 384-bit Root Key Table Hash (SHA-384 digest of RoTK public key X||Y)
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -21,7 +21,7 @@ impl Rkth {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CertError {
     TooLarge,
     Magic,
@@ -1002,6 +1002,7 @@ pub fn derive_image_rkth_pair<'d>(
     Ok((ecdsa_rkth, mldsa_rkth))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeriveError {
     Cert(CertError),
     Hash,

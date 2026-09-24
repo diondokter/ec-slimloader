@@ -2,13 +2,13 @@
 
 use core::convert::Infallible;
 
-use ec_slimloader_mcxa::certificate::derive_image_rkth_pair;
-use ec_slimloader_mcxa::header::ImageHeader;
+use ec_slimloader_mcxa::certificate::{derive_image_rkth_pair, DeriveError};
+use ec_slimloader_mcxa::header::{HeaderError, ImageHeader};
 use embassy_mcxa::rom::FlashError;
 use embassy_mcxa::{peripherals, Peri};
 use mcxa_ifr::{
-    BootCfg0, BootCfg1, DiceCsrKeyType, LifeCycleState, LspiQflashCfg0, QspiPort, ReverseArray, RotkRevoke, RotkUsage,
-    RotkUsageVal, SecureBootCfg, Update, CFPA, IFR,
+    BootCfg0, BootCfg1, DiceCsrKeyType, InverseBigBool, LifeCycleState, LspiQflashCfg0, QspiPort, ReverseArray,
+    RotkRevoke, RotkUsage, RotkUsageVal, SecureBootCfg, Update, CFPA, IFR,
 };
 
 pub struct Provisioner {
@@ -173,8 +173,8 @@ impl Provisioner {
             .with_dis_nxp_fw(mcxa_ifr::DisNxpFw::DisableNxpSignedSb3Fw)
             .build();
         self.ifr.cmpa.sbl_start_addr = config.sbl_start_addr;
-        self.ifr.cmpa.rotkh = ReverseArray::new(config.rotkh);
-        self.ifr.cmpa.pqc_rotkh = ReverseArray::new(config.pqc_rotkh);
+
+        self.with_rotkh(config.rotkh, config.pqc_rotkh);
 
         self.ifr.cmpa.cc_socu_pin = Self::DEFAULT_CC_SOCU_PIN;
         self.ifr.cmpa.cc_socu_dflt = Self::DEFAULT_CC_SOCU_DFLT;
@@ -258,26 +258,111 @@ impl Provisioner {
         self
     }
 
-    pub fn check_settings(&mut self) -> Result<&mut Self, ProvisionError> {
-        // // CMPA must be provisioned and valid before any policy field can be trusted, unless bricking the device.
-        // if is_cmpa_erased() || !cmpa_header_marker_is_valid() {
-        //     return Err(CfpaWriteError::SecurePolicyViolation);
-        // }
-        // if !hybrid_secure_boot_enforced()
-        //     || !cnsa_enforced()
-        //     || fast_boot_enabled()
-        //     || !low_power_authentication_enforced()
-        // {
-        //     return Err(CfpaWriteError::SecurePolicyViolation);
-        // }
+    pub fn check_production_settings(&mut self) -> Result<&mut Self, ProvisionError> {
+        if self.ifr.cfpa.is_erased()
+            || !matches!(
+                self.ifr.cmpa.secure_boot_cfg.sec_boot_en(),
+                mcxa_ifr::SecBootEn::OnlyPki
+            )
+            || !matches!(
+                self.ifr.cmpa.secure_boot_cfg.enf_cnsa(),
+                mcxa_ifr::EnfCnsa::CNSA2 | mcxa_ifr::EnfCnsa::CNSA2Dup
+            )
+            || matches!(self.ifr.cmpa.secure_boot_cfg.fast_boot_en(), InverseBigBool::True)
+            || !matches!(self.ifr.cmpa.secure_boot_cfg.lp_sec_boot(), mcxa_ifr::LpSecBoot::Cold)
+        {
+            return Err(ProvisionError::InvalidSettings);
+        }
 
         Ok(self)
     }
+
+    pub fn with_rotkh(&mut self, rotkh: [u32; 12], pqc_rotkh: [u32; 12]) -> &mut Self {
+        self.ifr.cmpa.rotkh = ReverseArray::new(rotkh);
+        self.ifr.cmpa.pqc_rotkh = ReverseArray::new(pqc_rotkh);
+        self.cmpa_updated = true;
+        self
+    }
+
+    /// Checks if the rotkh in the IFR corresponds with data stored in flash.
+    /// This is done by calculating the hashes over the bytes stored at the addresses.
+    ///
+    /// Provide the starting addresses of the multiple SBL image splits or provide just one address if there's just one SBL image.
+    pub fn check_rotkh(
+        &mut self,
+        mut peri: Peri<'_, peripherals::SGI0>,
+        starting_addresses: impl Iterator<Item = u32>,
+    ) -> Result<&mut Self, ProvisionError> {
+        const MAX_PROVISIONED_IMAGE_SIZE: u32 = 2 * 1024 * 1024; // Max 2MB flash.
+
+        for starting_address in starting_addresses {
+            let image_base = starting_address as *const u8;
+
+            let image_header = ImageHeader::from_ptr(image_base, MAX_PROVISIONED_IMAGE_SIZE)?;
+
+            let (image_ecdsa_rkth, image_pqc_rkth) = derive_image_rkth_pair(
+                peri.reborrow(),
+                image_base,
+                image_header.extended_header_offset(),
+                image_header.image_length(),
+            )?;
+
+            if ReverseArray::new(image_ecdsa_rkth.as_words()) != self.ifr.cmpa.rotkh {
+                return Err(ProvisionError::RotkhMismatch);
+            }
+            if ReverseArray::new(image_pqc_rkth.as_words()) != self.ifr.cmpa.pqc_rotkh {
+                return Err(ProvisionError::RotkhMismatch);
+            }
+        }
+
+        Ok(self)
+    }
+
+    /// Enables secure boot policies in CMPA
+    pub fn with_secure_boot_policies(&mut self) -> &mut Self {
+        self.ifr.cmpa.secure_boot_cfg = SecureBootCfg::builder()
+            .with_sec_boot_en(mcxa_ifr::SecBootEn::OnlyPki)
+            .with_lp_sec_boot(mcxa_ifr::LpSecBoot::Cold)
+            .with_dice_csr_key_type(DiceCsrKeyType::Sha384AndMLDSA)
+            .with_enf_cnsa(mcxa_ifr::EnfCnsa::CNSA2)
+            .with_enf_tzm_preset(true.into())
+            .with_fast_boot_en(mcxa_ifr::InverseBigBool::False)
+            .with_active_img_prot(mcxa_ifr::ActiveImgProt::GLBAC4)
+            .with_fips_sha_sten(mcxa_ifr::SelfTestEnable::NotIncluded)
+            .with_fips_aes_sten(mcxa_ifr::SelfTestEnable::NotIncluded)
+            .with_fips_ecdsa_sten(mcxa_ifr::SelfTestEnable::NotIncluded)
+            .with_fips_drbg_sten(mcxa_ifr::SelfTestEnable::NotIncluded)
+            .with_fips_cmac_sten(mcxa_ifr::SelfTestEnable::NotIncluded)
+            .with_fips_kdf_sten(mcxa_ifr::SelfTestEnable::NotIncluded)
+            .with_dis_nxp_fw(mcxa_ifr::DisNxpFw::DisableNxpSignedSb3Fw)
+            .build();
+
+        self.cmpa_updated = true;
+
+        self
+    }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProvisionError {
     UnexpectedIfrState,
     InvalidLifeCycle,
+    InvalidSettings,
+    SblHeaderError(HeaderError),
+    RothkDeriveError(DeriveError),
+    RotkhMismatch,
+}
+
+impl From<DeriveError> for ProvisionError {
+    fn from(v: DeriveError) -> Self {
+        Self::RothkDeriveError(v)
+    }
+}
+
+impl From<HeaderError> for ProvisionError {
+    fn from(v: HeaderError) -> Self {
+        Self::SblHeaderError(v)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -291,68 +376,3 @@ pub struct CmpaDefaultConfig {
     pub rotkh: [u32; 12],
     pub pqc_rotkh: [u32; 12],
 }
-
-// /// Enables secure boot policies in CMPA, configures the provided Root of trust hashes and resets the device to apply the changes.
-// /// Must ensure that a signed SBL and signed application(s) are present along with the correct ROTK hashes (BOTH ECDSA and MLDSA) as the provided ROTKH values will be matched at least against the SBL, and more images
-// /// if configured by input 'starting_addresses' to do so. The first address must be the Secure Boot Loader (SBL) image, which is expected to be the first image in internal flash at 0x0. The caller must ensure that the SBL and application(s)
-// // are signed and present in flash and that the correct ROTKH set is provided as inputs before calling this function, otherwise hashes and secure boot will not be provisioned.
-// pub fn configure_rotkh_and_enable_secure_boot_policies_and_reset(
-//     mut peri: Peri<'_, peripherals::SGI0>,
-//     starting_addresses: &[u32],
-//     rotkh: &[u32; 12],
-//     pqc_rotkh: &[u32; 12],
-// ) -> Result<Infallible, CmpaWriteError> {
-//     if is_cmpa_erased() || !cmpa_header_marker_is_valid() {
-//         return Err(CmpaWriteError::ConfigError);
-//     }
-//     if load_lifecycle_from_cfpa() != Some(NbootLifecycleState::Develop) {
-//         return Err(CmpaWriteError::LCStateInvalid);
-//     }
-//     if starting_addresses.is_empty() {
-//         return Err(CmpaWriteError::InvalidInput);
-//     }
-//     if starting_addresses[0] != 0x0000_0000 {
-//         return Err(CmpaWriteError::InvalidInput); //The first image must be the Secure Boot Loader (SBL) image, which is expected to be the first image in internal flash at 0x0.
-//     }
-
-//     let mut cmpa_page = read_cmpa_page_for_update()?;
-
-//     let rotkh_bytes = unsafe { core::slice::from_raw_parts(rotkh.as_ptr() as *const u8, 48) }; // Little endian representation of the 12 u32 words (4 bytes each) = 48 bytes
-//     let pqc_rotkh_bytes = unsafe { core::slice::from_raw_parts(pqc_rotkh.as_ptr() as *const u8, 48) };
-
-//     const MAX_PROVISIONED_IMAGE_SIZE: u32 = 2 * 1024 * 1024; // Max 2MB flash.
-
-//     for &starting_address in starting_addresses {
-//         let image_base = starting_address as *const u8;
-//         let image_header = unsafe { ImageHeader::from_ptr(image_base, MAX_PROVISIONED_IMAGE_SIZE) }
-//             .map_err(|_| CmpaWriteError::InvalidImageSlot)?;
-//         let (image_ecdsa_rkth, image_pqc_rkth) = derive_image_rkth_pair(
-//             peri.reborrow(),
-//             image_base,
-//             image_header.extended_header_offset(),
-//             image_header.image_length(),
-//         )
-//         .map_err(|_| CmpaWriteError::HashError)?;
-//         if image_ecdsa_rkth.as_bytes() != rotkh_bytes {
-//             return Err(CmpaWriteError::RotkhMismatch);
-//         }
-//         if image_pqc_rkth.as_bytes() != pqc_rotkh_bytes {
-//             return Err(CmpaWriteError::RotkhMismatch);
-//         }
-//     }
-//     cmpa_page[CmpaUpdateConfigData::Rotkh.byte_range()].copy_from_slice(rotkh_bytes);
-//     cmpa_page[CmpaUpdateConfigData::PqcRotkh.byte_range()].copy_from_slice(pqc_rotkh_bytes);
-
-//     let secure_boot_cfg: u32 = (SecureBootLevel::EcdsaMldsaOnly as u32)            // [1:0]  = 0b11
-//         | ((LpWakePolicy::FullAuthentication as u32) << 3)          // [4:3]  = 0b00
-//         | ((DiceCsrKeyType::EccP384AndMlDsa87 as u32) << 6)         // [7:6]  Hybrid ECDSA+MLDSA DICE only.
-//         | ((CnsaLevel::CnsaTwo as u32) << 8)                        // [9:8]  = 0b10
-//         | ((TzmPreset::Enforce as u32) << 10)                       // [11:10] Enforce TZM preset (if present)
-//         | (0x3 << 12)                                               // [13:12]= 0b11 fast boot disabled
-//         | ((XipImageProtect::WriteProtect as u32) << 14)      // [15:14]= 0b10 write protect without sticky lock //TODO : Maybe XOM, but does that get in way of app authenticating the SBL?
-//         | (0x1 << 30); // [31:30] Disable NXP signed FW = b01 (Disable any non provisioned FW)
-
-//     cmpa_page[CmpaUpdateConfigData::SecureBootCfg.byte_range()].copy_from_slice(&secure_boot_cfg.to_le_bytes());
-//     write_cmpa_page_to_scratch(&cmpa_page)?;
-//     cortex_m::peripheral::SCB::sys_reset()
-// }
