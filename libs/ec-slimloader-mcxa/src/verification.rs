@@ -92,9 +92,8 @@ pub fn verify_authenticity<'d>(
         // only the flashed keys are used
 
         const MAX_FLASH_SLOT_SIZE: u32 = 2 * 1024 * 1024; // 2MB
-        let image_header = unsafe {
-            crate::header::ImageHeader::from_ptr(image_base, MAX_FLASH_SLOT_SIZE).map_err(|_| BootError::Integrity)?
-        };
+        let image_header =
+            crate::header::ImageHeader::from_ptr(image_base, MAX_FLASH_SLOT_SIZE).map_err(|_| BootError::Integrity)?;
 
         // Parse AHAB container once and derive both RKTH values
         let (image_rkth, pqc_rkth) = derive_image_rkth_pair(
