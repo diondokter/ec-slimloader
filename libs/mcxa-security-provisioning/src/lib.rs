@@ -39,6 +39,10 @@ impl Provisioner {
         }
     }
 
+    pub fn is_erased(&self) -> bool {
+        self.ifr.cfpa.is_erased()
+    }
+
     pub fn commit_and_reboot(&mut self) -> Result<Infallible, FlashError> {
         match (self.cfpa_updated, self.cmpa_updated) {
             (false, false) => {
