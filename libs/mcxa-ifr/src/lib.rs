@@ -4,7 +4,7 @@
 
 use core::ops::{Index, IndexMut};
 
-use arbitrary_int::{u3, u4, u5, u7, u10, u24};
+pub use arbitrary_int::{u3, u4, u5, u7, u10, u24};
 use bitbybit::{bitenum, bitfield};
 
 #[repr(C)]

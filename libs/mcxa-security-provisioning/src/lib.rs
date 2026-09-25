@@ -7,8 +7,8 @@ use ec_slimloader_mcxa::header::{HeaderError, ImageHeader};
 use embassy_mcxa::rom::FlashError;
 use embassy_mcxa::{peripherals, Peri};
 use mcxa_ifr::{
-    BootCfg0, BootCfg1, DiceCsrKeyType, InverseBigBool, LifeCycleState, LspiQflashCfg0, QspiPort, ReverseArray,
-    RotkRevoke, RotkUsage, RotkUsageVal, SecureBootCfg, Update, CFPA, IFR,
+    u3, u4, u5, BootCfg0, BootCfg1, DiceCsrKeyType, InverseBigBool, LifeCycleState, LspiQflashCfg0, QspiPort,
+    ReverseArray, RotkRevoke, RotkUsage, RotkUsageVal, SecureBootCfg, Update, CFPA, IFR,
 };
 
 pub struct Provisioner {
@@ -204,7 +204,7 @@ impl Provisioner {
             .build();
         self.ifr.cmpa.boot_cfg1 = BootCfg1::builder()
             .with_ext_cmpa_32b_size(160) // Max size
-            .with_flash_remap_size(0u8.into())
+            .with_flash_remap_size(const { u5::new(0) })
             .with_isp_ft_entry(mcxa_ifr::EntryEnabled::Enabled)
             .with_isp_api_entry(mcxa_ifr::EntryEnabled::Enabled)
             .with_isp_dm_entry(mcxa_ifr::EntryEnabled::Enabled)
@@ -245,11 +245,11 @@ impl Provisioner {
             })
             .with_qspi_pwr_hold_time(mcxa_ifr::QspiPwrHoldTime::NoDelay)
             .with_qspi_hold_time(mcxa_ifr::QspiHoldTime::WaitFor500Microseconds)
-            .with_qspi_reset_gpio_pin(0u8.into())
-            .with_qspi_reset_gpio_port(0u8.into())
+            .with_qspi_reset_gpio_pin(const { u5::new(0) })
+            .with_qspi_reset_gpio_port(const { u3::new(0) })
             .with_qspi_reset_enable(false)
             .with_qspi_frequency(mcxa_ifr::QspiFrequency::Freq100Mhz)
-            .with_qspi_dummy_cycles(0u8.into())
+            .with_qspi_dummy_cycles(const { u4::new(0) })
             .with_qspi_auto_probe_en(true)
             .build();
         self.ifr.cmpa.sbl_start_addr = 0x1000_0000;
