@@ -58,6 +58,12 @@ impl IFR {
         // Safety: We're a repr(C) struct with no padding bytes
         unsafe { core::mem::transmute(self) }
     }
+
+    /// Get an all-zero IFR instance
+    pub fn zeroed() -> Self {
+        // Safety: All 0's is a valid
+        unsafe { core::mem::zeroed() }
+    }
 }
 
 #[repr(C)]

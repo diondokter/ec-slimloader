@@ -7,7 +7,7 @@ use ec_slimloader_mcxa::header::{HeaderError, ImageHeader};
 use embassy_mcxa::rom::FlashError;
 use embassy_mcxa::{peripherals, Peri};
 use mcxa_ifr::{
-    u3, u4, u5, BootCfg0, BootCfg1, DiceCsrKeyType, InverseBigBool, LifeCycleState, LspiQflashCfg0, QspiPort,
+    u3, u4, u5, BootCfg0, BootCfg1, DiceCsrKeyType, Header, InverseBigBool, LifeCycleState, LspiQflashCfg0, QspiPort,
     ReverseArray, RotkRevoke, RotkUsage, RotkUsageVal, SecureBootCfg, Update, CFPA, IFR,
 };
 
@@ -191,6 +191,24 @@ impl Provisioner {
     /// First boot IFR (CMPA / CFPA) provisioning for DEV and/or factory floor, non-security critical.
     /// Keeps secure boot, DICE and TZM disabled, and sets a safe default for other fields.
     pub fn with_initial_config(&mut self) -> &mut Self {
+        if self.ifr.cfpa.is_erased() {
+            let err_auth_fail_count = self.ifr.cfpa.err_auth_fail_count;
+            let err_itrc_count = self.ifr.cfpa.err_itrc_count;
+
+            self.ifr = IFR::zeroed();
+            self.ifr.cfpa.header = Header::builder()
+                .with_marker(0x9635)
+                .with_cfpa_lc_state(LifeCycleState::Develop)
+                .with_inv_cfpa_lc_state(mcxa_ifr::InvLifeCycleState::Develop)
+                .build();
+
+            // Restore the error fields so the ROM can keep track of them
+            self.ifr.cfpa.err_auth_fail_count = err_auth_fail_count;
+            self.ifr.cfpa.err_itrc_count = err_itrc_count;
+
+            self.cfpa_updated = true;
+        }
+
         self.ifr.cmpa.boot_cfg0 = BootCfg0::builder()
             .with_marker(0x5963)
             .with_boot_speed(mcxa_ifr::BootSpeed::MdMode)
@@ -344,6 +362,10 @@ impl Provisioner {
         self.cmpa_updated = true;
 
         self
+    }
+
+    pub fn ifr(&self) -> &IFR {
+        &self.ifr
     }
 }
 
