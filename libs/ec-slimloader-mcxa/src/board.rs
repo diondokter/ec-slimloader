@@ -350,6 +350,15 @@ fn vector_table_looks_valid(initial_sp: u32, reset_handler: u32) -> bool {
 
     let sp_ok = (SRAM_START..=SRAM_END).contains(&initial_sp);
     let reset_ok = (reset_handler & 1) == 1 && reset_handler < FLASH_END;
+
+    defmt_or_log::trace!(
+        "initial_sp: {:X} (ok: {}), reset_handler: {:X} (ok: {})",
+        initial_sp,
+        sp_ok,
+        reset_handler,
+        reset_ok
+    );
+
     sp_ok && reset_ok
 }
 
@@ -603,13 +612,18 @@ impl<C: McxaConfig + BootStatePolicy> Board for Mcxa<C> {
             const SLOT_SIZE: u32 = 0x000F_8000; // 992 KB
             let image_base = app_base as *const u8;
             let jump_address = image_base as *const u32;
-            let Ok(image_header) = header::ImageHeader::from_ptr(image_base, SLOT_SIZE) else {
-                return ec_slimloader::BootError::Markers;
+            let image_header = match header::ImageHeader::from_ptr(image_base, SLOT_SIZE) {
+                Ok(val) => val,
+                Err(e) => {
+                    defmt_or_log::error!("Image header not ok: {}", e);
+                    return ec_slimloader::BootError::Markers;
+                }
             };
 
             let image_len = image_header.image_length();
             let cert_offset = image_header.cert_block_offset();
             if !(0x40..=SLOT_SIZE).contains(&image_len) || (cert_offset & 0x3) != 0 || cert_offset >= image_len {
+                defmt_or_log::error!("Image len or cert offset not ok");
                 return ec_slimloader::BootError::Markers;
             }
 
@@ -622,12 +636,6 @@ impl<C: McxaConfig + BootStatePolicy> Board for Mcxa<C> {
     }
 
     fn abort(&mut self) -> ! {
-        #[cfg(target_os = "none")]
-        loop {
-            cortex_m::asm::wfi();
-        }
-
-        #[cfg(not(target_os = "none"))]
         loop {
             core::hint::spin_loop();
         }

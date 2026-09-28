@@ -81,6 +81,7 @@ impl ImageHeader {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum HeaderError {
     LengthZero,
     LengthTooSmall,

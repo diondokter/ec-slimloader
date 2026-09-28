@@ -969,6 +969,7 @@ name = "partition-manager"
 version = "0.1.0"
 source = "git+https://github.com/OpenDevicePartnership/embedded-services.git?tag=v0.1.0#6034c6bf3d2d7bfe50821370be7c1275fbf8520a"
 dependencies = [
+ "defmt 0.3.100",
  "embassy-sync 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "embedded-storage-async",
  "partition-manager-macros",

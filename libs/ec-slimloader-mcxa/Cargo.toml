@@ -27,7 +27,7 @@ mcxa-ifr = { path = "../mcxa-ifr" }
 
 [features]
 default = ["mcxa5xx", "defmt"]
-defmt = ["dep:defmt", "defmt-or-log/defmt", "ec-slimloader/defmt"]
+defmt = ["dep:defmt", "defmt-or-log/defmt", "ec-slimloader/defmt", "partition-manager/defmt"]
 log = ["dep:log", "defmt-or-log/log", "ec-slimloader/log"]
 flexspi-selftest = []
 mcxa5xx = ["embassy-mcxa/mcxa5xx"]
