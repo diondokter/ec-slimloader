@@ -615,7 +615,7 @@ impl<C: McxaConfig + BootStatePolicy> Board for Mcxa<C> {
             let image_header = match header::ImageHeader::from_ptr(image_base, SLOT_SIZE) {
                 Ok(val) => val,
                 Err(e) => {
-                    defmt_or_log::error!("Image header not ok: {}", e);
+                    defmt_or_log::error!("Image header not ok: {:?}", e);
                     return ec_slimloader::BootError::Markers;
                 }
             };
