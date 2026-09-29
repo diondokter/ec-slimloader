@@ -74,7 +74,7 @@ pub fn verify_authenticity<'d>(
     let dev_mode = ifr.cfpa.header.cfpa_lc_state() == Ok(LifeCycleState::Develop);
 
     let follows_policy = ifr.cmpa.secure_boot_cfg.sec_boot_en() == SecBootEn::OnlyPki
-        && ifr.cmpa.secure_boot_cfg.enf_cnsa() == EnfCnsa::CNSA2
+        && matches!(ifr.cmpa.secure_boot_cfg.enf_cnsa(), EnfCnsa::CNSA2 | EnfCnsa::CNSA2Dup)
         && ifr.cmpa.secure_boot_cfg.fast_boot_en() != InverseBigBool::True
         && ifr.cmpa.secure_boot_cfg.lp_sec_boot() == LpSecBoot::Cold
         || dev_mode;
