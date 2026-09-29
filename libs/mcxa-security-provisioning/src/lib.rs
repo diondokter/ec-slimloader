@@ -132,22 +132,11 @@ impl Provisioner {
         self
     }
 
-    pub fn advance_lifecycle(&mut self, desired_lifecycle: LifeCycleState) -> Result<&mut Self, ProvisionError> {
-        let current_lifecycle = self
-            .ifr
-            .cfpa
-            .header
-            .cfpa_lc_state()
-            .map_err(|_| ProvisionError::UnexpectedIfrState)?;
-
-        if desired_lifecycle.rank() >= current_lifecycle.rank() && desired_lifecycle != current_lifecycle {
-            self.ifr.cfpa.header.set_cfpa_lc_state(desired_lifecycle);
-            self.ifr.cfpa.header.set_inv_cfpa_lc_state(desired_lifecycle.inverse());
-            self.cfpa_updated = true;
-            Ok(self)
-        } else {
-            Err(ProvisionError::InvalidLifeCycle)
-        }
+    pub fn with_lifecycle(&mut self, val: LifeCycleState) -> &mut Self {
+        self.ifr.cfpa.header.set_cfpa_lc_state(val);
+        self.ifr.cfpa.header.set_inv_cfpa_lc_state(val.inverse());
+        self.cfpa_updated = true;
+        self
     }
 
     /// Sets a "default" secure Boot configuration for CMPA. This is intended for first-time provisioning of a DEV unit, and must only be called in the Develop lifecycle state.
