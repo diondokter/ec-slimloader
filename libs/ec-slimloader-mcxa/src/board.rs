@@ -612,7 +612,7 @@ impl<C: McxaConfig + BootStatePolicy> Board for Mcxa<C> {
             const SLOT_SIZE: u32 = 0x000F_8000; // 992 KB
             let image_base = app_base as *const u8;
             let jump_address = image_base as *const u32;
-            let image_header = match header::ImageHeader::from_ptr(image_base, SLOT_SIZE) {
+            let image_header = match unsafe { header::ImageHeader::from_ptr(image_base, SLOT_SIZE) } {
                 Ok(val) => val,
                 Err(e) => {
                     defmt_or_log::error!("Image header not ok: {:?}", e);

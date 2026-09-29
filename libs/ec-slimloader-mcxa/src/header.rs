@@ -29,7 +29,11 @@ pub struct ImageHeader {
 }
 
 impl ImageHeader {
-    pub fn from_ptr(ptr: *const u8, slot_size: u32) -> Result<Self, HeaderError> {
+    /// Read the image header from the pointer location
+    ///
+    /// # Safety
+    /// `ptr` must point to initialized, readable memory
+    pub unsafe fn from_ptr(ptr: *const u8, slot_size: u32) -> Result<Self, HeaderError> {
         let ptr = ptr.cast::<VectorAndHeaderRaw>();
 
         if !(ptr.is_aligned()) {

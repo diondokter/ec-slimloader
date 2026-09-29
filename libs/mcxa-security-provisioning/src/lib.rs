@@ -320,7 +320,7 @@ impl Provisioner {
         for starting_address in starting_addresses {
             let image_base = starting_address as *const u8;
 
-            let image_header = ImageHeader::from_ptr(image_base, MAX_PROVISIONED_IMAGE_SIZE)?;
+            let image_header = unsafe { ImageHeader::from_ptr(image_base, MAX_PROVISIONED_IMAGE_SIZE) }?;
 
             let (image_ecdsa_rkth, image_pqc_rkth) = derive_image_rkth_pair(
                 peri.reborrow(),
