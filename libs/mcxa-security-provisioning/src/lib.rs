@@ -364,13 +364,13 @@ pub enum ProvisionError {
     InvalidLifeCycle,
     InvalidSettings,
     SblHeaderError(HeaderError),
-    RothkDeriveError(DeriveError),
+    RotkhDeriveError(DeriveError),
     RotkhMismatch,
 }
 
 impl From<DeriveError> for ProvisionError {
     fn from(v: DeriveError) -> Self {
-        Self::RothkDeriveError(v)
+        Self::RotkhDeriveError(v)
     }
 }
 
