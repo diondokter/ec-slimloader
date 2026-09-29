@@ -1102,6 +1102,12 @@ impl<T, const N: usize> ReverseArray<T, N> {
     pub fn degrade(self) -> [T; N] {
         self.0
     }
+
+    /// Discard the wrapped and get the raw array in original (non-reverse) order
+    pub fn degrade_original(mut self) -> [T; N] {
+        self.0.reverse();
+        self.0
+    }
 }
 
 impl<T, const N: usize> Index<usize> for ReverseArray<T, N> {
