@@ -83,7 +83,10 @@ impl Provisioner {
             IFR::SCRATCH_ADDR
         };
 
-        self.ifr.update.devcfg_upd_type = mcxa_ifr::UpdateType::CfpaUpdated;
+        self.ifr
+            .update
+            .devcfg_upd_type
+            .set_devcfg_upd_type(mcxa_ifr::UpdateType::CfpaUpdated);
 
         let ifr_subslice = &self.ifr.as_array().as_slice()[..size_of::<Update>() + size_of::<CFPA>()];
 
@@ -102,7 +105,10 @@ impl Provisioner {
             IFR::SCRATCH_ADDR
         };
 
-        self.ifr.update.devcfg_upd_type = mcxa_ifr::UpdateType::CmpaUpdated;
+        self.ifr
+            .update
+            .devcfg_upd_type
+            .set_devcfg_upd_type(mcxa_ifr::UpdateType::CmpaUpdated);
 
         let ifr_slice = self.ifr.as_array().as_slice();
 

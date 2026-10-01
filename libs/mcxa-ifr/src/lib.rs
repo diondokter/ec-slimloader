@@ -70,7 +70,7 @@ impl IFR {
 #[derive(Debug, Clone)]
 pub struct Update {
     /// Device configuration update request type.
-    pub devcfg_upd_type: UpdateType,
+    pub devcfg_upd_type: DevcfgUpdType,
     pub _reserved: [u32; 3],
 }
 
@@ -79,6 +79,12 @@ impl Update {
     pub const SCRATCH_ADDR: u32 = 0x0100_2000;
     pub const SECURE_DEVCFG_ADDR: u32 = 0x1100_0000;
     pub const SECURE_SCRATCH_ADDR: u32 = 0x1100_2000;
+}
+
+#[bitfield(u32, debug, default = 0)]
+pub struct DevcfgUpdType {
+    #[bits(0..=31, rw)]
+    pub devcfg_upd_type: Option<UpdateType>,
 }
 
 #[bitenum(u32)]
@@ -92,6 +98,7 @@ pub enum UpdateType {
     NfpaUpdated = 0x4E465041,
     /// Not a valid variant
     Erased = 0xFFFF_FFFF,
+    Zeroed = 0,
 }
 
 #[repr(C)]
