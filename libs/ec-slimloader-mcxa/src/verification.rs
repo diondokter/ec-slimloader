@@ -57,7 +57,13 @@ fn load_nboot_auth_parms_from_ifr(ifr: &IFR) -> Result<NbootImgAuthParms, BootEr
                     .cfpa_lc_state()
                     .map_err(|_| BootError::Markers)?
                     .raw_value() as u32;
-                (!raw_val << 16) | raw_val
+                let raw_inv_val = ifr
+                    .cfpa
+                    .header
+                    .inv_cfpa_lc_state()
+                    .map_err(|_| BootError::Markers)?
+                    .raw_value() as u32;
+                (raw_inv_val << 16) | raw_val
             },
         },
         soc_trusted_firmware_version: ifr.cfpa.ee0_fw_version,
