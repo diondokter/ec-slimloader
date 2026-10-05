@@ -71,7 +71,10 @@ fn load_nboot_auth_parms_from_ifr(ifr: &IFR) -> Result<NbootImgAuthParms, BootEr
     })
 }
 
-pub fn verify_authenticity(mut peri: Peri<'_, peripherals::SGI0>, image_base: *const u8) -> Result<bool, BootError> {
+pub fn verify_authenticity(
+    mut peri: Peri<'_, peripherals::SGI0>,
+    image_base: *const u8,
+) -> Result<NbootBoolValue, BootError> {
     let ifr = unsafe { mcxa_ifr::IFR::current() };
 
     let mut parms = load_nboot_auth_parms_from_ifr(ifr)?;
@@ -89,7 +92,7 @@ pub fn verify_authenticity(mut peri: Peri<'_, peripherals::SGI0>, image_base: *c
     defmt_or_log::trace!("Initializing NBOOT context");
     let mut n_boot_api = embassy_mcxa::rom::get().nboot().map_err(|_| BootError::Authenticate)?;
 
-    protected_if::<{ LifeCycleState::Develop as u32 }, Result<(), BootError>, _, _>(
+    let result = protected_if::<{ LifeCycleState::Develop as u32 }, Result<(), BootError>, _, _>(
         || ifr.cfpa.header.cfpa_lc_state().map(|lc| lc as u32).unwrap_or_default(),
         || {
             // In dev mode, we're going to lie to nboot and derive the rkth's ourselves so they're always correct
@@ -114,8 +117,14 @@ pub fn verify_authenticity(mut peri: Peri<'_, peripherals::SGI0>, image_base: *c
 
             Ok(())
         },
-    )
-    .transpose()?;
+    );
+
+    match result {
+        Ok(if_result) => if_result?,
+        Err(_) => {
+            // We did not take the if branch. Nothing to do
+        }
+    }
 
     defmt_or_log::trace!("begin auth");
     let status = n_boot_api
@@ -125,8 +134,8 @@ pub fn verify_authenticity(mut peri: Peri<'_, peripherals::SGI0>, image_base: *c
     match status {
         NbootBoolValue::True => {
             defmt_or_log::info!("Hybrid Auth OK");
-            Ok(true)
+            Ok(status)
         }
-        _ => Ok(false),
+        _ => Ok(status),
     }
 }
