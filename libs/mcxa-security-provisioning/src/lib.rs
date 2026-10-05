@@ -305,14 +305,18 @@ impl Provisioner {
     /// This is done by calculating the hashes over the bytes stored at the addresses.
     ///
     /// Provide the starting addresses of the multiple SBL image splits or provide just one address if there's just one SBL image.
+    ///
+    /// If no starting addresses are given, the function errors with [ProvisionError::NoImages]
     pub fn check_rotkh(
         &mut self,
         mut peri: Peri<'_, peripherals::SGI0>,
         starting_addresses: impl Iterator<Item = u32>,
     ) -> Result<&mut Self, ProvisionError> {
         const MAX_PROVISIONED_IMAGE_SIZE: u32 = 2 * 1024 * 1024; // Max 2MB flash.
+        let mut image_count = 0;
 
         for starting_address in starting_addresses {
+            image_count += 1;
             let image_base = starting_address as *const u8;
 
             let image_header = unsafe { ImageHeader::from_ptr(image_base, MAX_PROVISIONED_IMAGE_SIZE) }?;
@@ -332,7 +336,11 @@ impl Provisioner {
             }
         }
 
-        Ok(self)
+        if image_count > 0 {
+            Ok(self)
+        } else {
+            Err(ProvisionError::NoImages)
+        }
     }
 
     /// Enables secure boot policies in CMPA
@@ -372,6 +380,7 @@ pub enum ProvisionError {
     SblHeaderError(HeaderError),
     RotkhDeriveError(DeriveError),
     RotkhMismatch,
+    NoImages,
 }
 
 impl From<DeriveError> for ProvisionError {
