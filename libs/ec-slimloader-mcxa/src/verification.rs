@@ -77,7 +77,11 @@ pub fn verify_authenticity<'d>(
     let ifr = unsafe { mcxa_ifr::IFR::current() };
 
     let mut parms = load_nboot_auth_parms_from_ifr(ifr)?;
-    let dev_mode = ifr.cfpa.header.cfpa_lc_state() == Ok(LifeCycleState::Develop);
+
+    let secure_boot_enabled = ifr.cmpa.secure_boot_cfg.sec_boot_en() != SecBootEn::AllAllowed;
+    let develop_lifecycle = ifr.cfpa.header.cfpa_lc_state() == Ok(LifeCycleState::Develop);
+    // Don't enable dev mode if secure boot is active. That way a flashed key can be tested
+    let dev_mode = develop_lifecycle && !secure_boot_enabled;
 
     let follows_policy = ifr.cmpa.secure_boot_cfg.sec_boot_en() == SecBootEn::OnlyPki
         && matches!(ifr.cmpa.secure_boot_cfg.enf_cnsa(), EnfCnsa::CNSA2 | EnfCnsa::CNSA2Dup)
